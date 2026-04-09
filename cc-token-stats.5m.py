@@ -498,7 +498,7 @@ def main():
     tw = sum(m["cw"] for m in machines); tr = sum(m["cr"] for m in machines)
     tc = sum(m["cost"] for m in machines); ts = sum(m["sessions"] for m in machines)
     ta = ti + to + tw + tr
-    now = datetime.now().strftime("%H:%M:%S")
+    now = datetime.now().strftime("%H:%M")
     icon = CFG.get("menu_bar_icon", "sfSymbol=sparkles.rectangle.stack")
     today = local["today"]
     machine_count = len(machines)
@@ -538,7 +538,7 @@ def main():
 
     # ── Key numbers: pure ASCII labels, values pushed to right edge ──
     cost_s = fc(tc); sess_s = f"{ts:,}"; tok_s = tk(ta)
-    W = 36  # total line display width — pushes values to right edge of panel
+    W = 30  # total line display width
     def rj(label, val):
         pad = W - len(label) - dw(val)
         return f"{label}{' ' * max(pad, 1)}{val}"
@@ -656,10 +656,10 @@ def main():
         print("---")
         if ZH:
             GOLD = "color=#D4A04A size=13" if DARK else "color=#8B6914 size=13"
-            print(f"💰 {prefix}${sub:.0f}/月 → 已节省 {fc(savings)} ({multiplier:.0f}x) | {GOLD}")
+            print(f"💰 {prefix}${sub:.0f}/月 · 省 {fc(savings)} ({multiplier:.0f}x) | {GOLD}")
         else:
             GOLD = "color=#D4A04A size=13" if DARK else "color=#8B6914 size=13"
-            print(f"💰 {prefix}${sub:.0f}/mo → saved {fc(savings)} ({multiplier:.0f}x) | {GOLD}")
+            print(f"💰 {prefix}${sub:.0f}/mo · saved {fc(savings)} ({multiplier:.0f}x) | {GOLD}")
         # Submenu: details
         if ZH:
             print(f"--等价 API 费用：{fc(tc)} | {ROW2}")
@@ -819,9 +819,9 @@ def main():
     print("---")
     dmin = min((m["d_min"] for m in machines if m["d_min"]), default="N/A")
     dmax = max((m["d_max"] for m in machines if m["d_max"]), default="N/A")
-    rng = f"{dmin[5:]} ~ {dmax[5:]}" if dmin != "N/A" else "N/A"
+    rng = f"{dmin[5:]}~{dmax[5:]}" if dmin != "N/A" else "N/A"
     sync_str = {"icloud": "iCloud", "custom": "Custom"}.get(SYNC_TYPE, "")
-    parts = [rng, f"{machine_count}{'台' if ZH else ' machines'}"]
+    parts = [rng, f"{machine_count}{'台' if ZH else 'mac'}"]
     if sync_str: parts.append(sync_str)
     parts.append(now)
     print(f"{' · '.join(parts)} | {META}")
