@@ -591,8 +591,21 @@ def main():
 
         LW = 8
 
-        # Collect all gauge lines first, then pad to uniform width
-        gauge_lines = []
+        def _reset_short(reset_str):
+            """Short ASCII-only reset label for uniform width."""
+            if not reset_str: return ""
+            try:
+                rt = datetime.fromisoformat(reset_str.replace("Z", "+00:00"))
+                now_aware = datetime.now().astimezone()
+                secs = (rt - now_aware).total_seconds()
+                if secs <= 0: return "now"
+                hrs = int(secs // 3600); mins = int((secs % 3600) // 60)
+                if hrs >= 48: return f"{hrs // 24}d"
+                if hrs >= 24: return f"1d{hrs-24}h"
+                if hrs > 0: return f"{hrs}h{mins}m"
+                return f"{mins}m"
+            except: return ""
+
         gauge_items = [
             ("Session", usage.get("five_hour")),
             ("Weekly ", usage.get("seven_day")),
@@ -604,27 +617,27 @@ def main():
         if so and so.get("utilization") is not None:
             gauge_items.append(("Opus   ", so))
 
+        # Build lines with uniform ASCII formatting
+        gauge_lines = []
         for label, obj in gauge_items:
             if not obj or obj.get("utilization") is None: continue
             p = obj["utilization"]
-            rst = _reset_label(obj.get("resets_at"))
-            rst_s = f"↻{rst}" if rst else ""
-            padded = f"{label:<{LW}}"
-            pct_s = f"{p:.0f}%"
+            rst = _reset_short(obj.get("resets_at"))
             col = _danger_color(p) or LINE_COLORS[_color_idx[0] % len(LINE_COLORS)]
             _color_idx[0] += 1
-            text = f"{padded}{_gauge(p)} {pct_s:>4} {rst_s}"
             rt_local = _reset_time_local(obj.get("resets_at", ""))
-            gauge_lines.append((text, col, rt_local))
+            # All ASCII: label(8) + gauge(10) + pct(5) + reset(6) = fixed total
+            line = f"{label:<{LW}}{_gauge(p)} {p:>3.0f}%  ↻{rst:<5}"
+            gauge_lines.append((line, col, rt_local))
 
-        # Pad all lines to same display width
         if gauge_lines:
-            max_dw = max(dw(t) for t, _, _ in gauge_lines)
+            # Pad to match key numbers width (W) for right-edge alignment
+            max_len = max(W, max(len(t) for t, _, _ in gauge_lines))
             print("---")
             for text, col, rt_local in gauge_lines:
-                pad = " " * (max_dw - dw(text))
+                padded = text.ljust(max_len)
                 col_attr = f"color={col} " if col else ""
-                print(f"{text}{pad} | {col_attr}size=13 font=Menlo")
+                print(f"{padded} | {col_attr}size=13 font=Menlo")
                 if rt_local:
                     if ZH:
                         print(f"--重置：{rt_local} | {DIM}")
@@ -733,10 +746,7 @@ def main():
     all_total_msgs = sum(v["msgs"] for v in daily.values())
     active_days = [(d, v) for d, v in reversed(daily_sorted) if v["msgs"] > 0]
     day_count = len(active_days)
-    if ZH:
-        print(f"每日明细 ({day_count}天) | {SH}")
-    else:
-        print(f"Daily Details ({day_count}d) | {SH}")
+    print(f"{'每日明细' if ZH else 'Daily Details'} | {SH}")
     # Show recent 15
     for date, data in active_days[:15]:
         dd = date[5:]
