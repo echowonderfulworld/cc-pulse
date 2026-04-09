@@ -577,9 +577,9 @@ def main():
 
         # Each gauge gets a distinct color
         if DARK:
-            LINE_COLORS = ["#5CC6A7", "#E8A838", "#6BA4C9", "#D4CDC0"]   # teal, amber, blue, warm white
+            LINE_COLORS = ["#5CC6A7", "#E07850", "#6BA4C9", "#D4CDC0"]   # teal, coral, blue, warm white
         else:
-            LINE_COLORS = ["#1A5C4C", "#B86E1A", "#1B5A85", "#2C3040"]   # rich teal, dark amber, deep blue, navy
+            LINE_COLORS = ["#1A5C4C", "#A04030", "#1B5A85", "#2C3040"]   # rich teal, deep coral, deep blue, navy
         _color_idx = [0]
 
         def _danger_color(pct):
