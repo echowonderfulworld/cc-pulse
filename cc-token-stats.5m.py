@@ -540,7 +540,11 @@ def main():
         _sd = usage.get("seven_day")
         if _sd and _sd.get("utilization") is not None: _7d_util = _sd["utilization"]
 
-    print("CC")
+    # Menu bar: CC + both limits compact
+    if _5h_util > 0 or _7d_util > 0:
+        print(f"CC {_5h_util:.0f}∕{_7d_util:.0f}%")
+    else:
+        print("CC")
     print("---")
 
     # ═══════════════════════════════════════════════════════════════
