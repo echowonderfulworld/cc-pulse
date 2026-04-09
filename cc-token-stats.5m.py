@@ -622,7 +622,7 @@ def main():
         if m["local"]:
             suf = " (实时)" if ZH else " (live)"
         else:
-            suf = f" (同步 {m['at'][5:16]})" if m.get("at") else ""
+            suf = (f" (同步 {m['at'][5:16]})" if ZH else f" (synced {m['at'][5:16]})") if m.get("at") else ""
         print(f"{m['label']}{suf}  {fc(m['cost'])} | {SEC}")
 
         # Submenu: machine details
