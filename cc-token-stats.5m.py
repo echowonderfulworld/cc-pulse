@@ -257,8 +257,6 @@ def get_usage():
 def scan():
     base = os.path.join(CLAUDE_DIR, "projects")
     today_str = datetime.now().strftime("%Y-%m-%d")
-    # 7-day date keys
-    day_keys = [(datetime.now() - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(6, -1, -1)]
 
     now_dt = datetime.now()
     cutoff_5h = now_dt - timedelta(hours=5)
@@ -274,8 +272,8 @@ def scan():
         # Rolling windows
         "window_5h": {"tokens": 0, "cost": 0.0, "msgs": 0, "out": 0},
         "window_7d": {"tokens": 0, "cost": 0.0, "msgs": 0, "out": 0},
-        # Daily (last 7 days)
-        "daily": {d: {"tokens": 0, "cost": 0.0, "msgs": 0} for d in day_keys},
+        # Daily (ALL dates, collected dynamically)
+        "daily": defaultdict(lambda: {"tokens": 0, "cost": 0.0, "msgs": 0}),
         # Hourly (24h)
         "hourly": defaultdict(int),
         # Per-project
@@ -332,10 +330,12 @@ def scan():
                                     if m not in t["models"]: t["models"][m] = {"msgs": 0, "cost": 0.0}
                                     t["models"][m]["msgs"] += 1; t["models"][m]["cost"] += mc
 
-                            # Daily (last 7 days)
-                            if msg_date and msg_date in s["daily"]:
+                            # Daily (all dates) + date range from message timestamps
+                            if msg_date:
                                 dd = s["daily"][msg_date]
                                 dd["tokens"] += total_t; dd["cost"] += mc; dd["msgs"] += 1
+                                if not s["d_min"] or msg_date < s["d_min"]: s["d_min"] = msg_date
+                                if not s["d_max"] or msg_date > s["d_max"]: s["d_max"] = msg_date
 
                             # Hourly
                             if ts_str and len(ts_str) >= 13:
@@ -362,9 +362,6 @@ def scan():
                         except: pass
                 if has:
                     s["sessions"] += 1
-                    if fd:
-                        if not s["d_min"] or fd < s["d_min"]: s["d_min"] = fd
-                        if not s["d_max"] or fd > s["d_max"]: s["d_max"] = fd
             except: pass
     return s
 
@@ -506,9 +503,13 @@ def main():
     today = local["today"]
     machine_count = len(machines)
 
-    daily = local["daily"]
-    week_total_cost = sum(v["cost"] for v in daily.values())
-    week_total_msgs = sum(v["msgs"] for v in daily.values())
+    daily = dict(local["daily"])  # convert from defaultdict
+    # Sort by date
+    daily_sorted = sorted(daily.items(), key=lambda x: x[0])
+    # Last 7 days for quick stats
+    last_7d = [(d, v) for d, v in daily_sorted if d >= (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")]
+    week_total_cost = sum(v["cost"] for _, v in last_7d)
+    week_total_msgs = sum(v["msgs"] for _, v in last_7d)
 
     # Aggregate models across all machines
     all_models = {}
@@ -600,7 +601,7 @@ def main():
             col = _danger_color(p) or LINE_COLORS[_color_idx[0] % len(LINE_COLORS)]
             _color_idx[0] += 1
             col_attr = f"color={col} " if col else ""
-            print(f"{padded}{_gauge(p)}  {pct_s:>4}  {rst_s:<8} | {col_attr}size=13 font=Menlo")
+            print(f"{padded}{_gauge(p)} {pct_s:>4} {rst_s} | {col_attr}size=13 font=Menlo")
             # Submenu: reset time
             rt_local = _reset_time_local(obj.get("resets_at", ""))
             if rt_local:
@@ -716,17 +717,17 @@ def main():
     # Section header style
     SH = "color=#5CC6A7 size=12" if DARK else "color=#1A5C4C size=12"
 
-    # ── 7-Day Trend ──
-    print(f"{'最近 7 天' if ZH else 'Last 7 Days'} | {SH}")
-    for date, data in daily.items():
+    # ── Daily Details (all dates) ──
+    print(f"{'每日明细' if ZH else 'Daily Details'} | {SH}")
+    all_total_cost = sum(v["cost"] for v in daily.values())
+    all_total_msgs = sum(v["msgs"] for v in daily.values())
+    for date, data in daily_sorted:
         dd = date[5:]
         if data["msgs"] > 0:
             print(f"--{dd}   {fc(data['cost']):>8}   {data['msgs']:>5} msgs | {ROW2}")
-        else:
-            print(f"--{dd}   {'—':>8} | {DIM}")
     print("-----")
     total_label = "合计" if ZH else "Total"
-    print(f"--{total_label}   {fc(week_total_cost):>8}          {week_total_msgs:>4} msgs | {DIM}")
+    print(f"--{total_label}   {fc(all_total_cost):>8}   {all_total_msgs:>5} msgs | {DIM}")
 
     # ── Models ──
     print(f"{'模型分布' if ZH else 'Models'} | {SH}")
