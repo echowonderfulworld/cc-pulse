@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+node_modules/
+web/node_modules/
+dashboard/static/
+.usage_cache.json
+*.egg-info/
+dist/
+build/
+.DS_Store
+bun.lock
