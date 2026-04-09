@@ -590,35 +590,46 @@ def main():
             return None
 
         LW = 8
-        def _usage_line(label, obj):
-            if not obj or obj.get("utilization") is None: return
+
+        # Collect all gauge lines first, then pad to uniform width
+        gauge_lines = []
+        gauge_items = [
+            ("Session", usage.get("five_hour")),
+            ("Weekly ", usage.get("seven_day")),
+        ]
+        ss = usage.get("seven_day_sonnet")
+        if ss and ss.get("utilization") is not None:
+            gauge_items.append(("Sonnet ", ss))
+        so = usage.get("seven_day_opus")
+        if so and so.get("utilization") is not None:
+            gauge_items.append(("Opus   ", so))
+
+        for label, obj in gauge_items:
+            if not obj or obj.get("utilization") is None: continue
             p = obj["utilization"]
             rst = _reset_label(obj.get("resets_at"))
             rst_s = f"↻{rst}" if rst else ""
             padded = f"{label:<{LW}}"
             pct_s = f"{p:.0f}%"
-            # Fixed-width: pct 4 chars, reset 8 chars → always aligned
             col = _danger_color(p) or LINE_COLORS[_color_idx[0] % len(LINE_COLORS)]
             _color_idx[0] += 1
-            col_attr = f"color={col} " if col else ""
-            print(f"{padded}{_gauge(p)} {pct_s:>4} {rst_s} | {col_attr}size=13 font=Menlo")
-            # Submenu: reset time
+            text = f"{padded}{_gauge(p)} {pct_s:>4} {rst_s}"
             rt_local = _reset_time_local(obj.get("resets_at", ""))
-            if rt_local:
-                if ZH:
-                    print(f"--重置：{rt_local} | {DIM}")
-                else:
-                    print(f"--Resets: {rt_local} | {DIM}")
+            gauge_lines.append((text, col, rt_local))
 
-        print("---")
-        _usage_line("Session", usage.get("five_hour"))
-        _usage_line("Weekly ", usage.get("seven_day"))
-        ss = usage.get("seven_day_sonnet")
-        if ss and ss.get("utilization") is not None:
-            _usage_line("Sonnet ", ss)
-        so = usage.get("seven_day_opus")
-        if so and so.get("utilization") is not None:
-            _usage_line("Opus   ", so)
+        # Pad all lines to same display width
+        if gauge_lines:
+            max_dw = max(dw(t) for t, _, _ in gauge_lines)
+            print("---")
+            for text, col, rt_local in gauge_lines:
+                pad = " " * (max_dw - dw(text))
+                col_attr = f"color={col} " if col else ""
+                print(f"{text}{pad} | {col_attr}size=13 font=Menlo")
+                if rt_local:
+                    if ZH:
+                        print(f"--重置：{rt_local} | {DIM}")
+                    else:
+                        print(f"--Resets: {rt_local} | {DIM}")
 
     # ── Subscription ROI ──
     sub = CFG.get("subscription", 0)
@@ -717,11 +728,15 @@ def main():
     # Section header style
     SH = "color=#5CC6A7 size=12" if DARK else "color=#1A5C4C size=12"
 
-    # ── Daily Details (all dates) ──
-    print(f"{'每日明细' if ZH else 'Daily Details'} | {SH}")
+    # ── Daily Details (all dates, newest first) ──
     all_total_cost = sum(v["cost"] for v in daily.values())
     all_total_msgs = sum(v["msgs"] for v in daily.values())
-    for date, data in daily_sorted:
+    day_count = sum(1 for v in daily.values() if v["msgs"] > 0)
+    if ZH:
+        print(f"每日明细 ({day_count}天) | {SH}")
+    else:
+        print(f"Daily Details ({day_count}d) | {SH}")
+    for date, data in reversed(daily_sorted):
         dd = date[5:]
         if data["msgs"] > 0:
             print(f"--{dd}   {fc(data['cost']):>8}   {data['msgs']:>5} msgs | {ROW2}")
@@ -740,21 +755,27 @@ def main():
     hourly = local["hourly"]
     if hourly:
         print(f"{'活跃时段' if ZH else 'Active Hours'} | {SH}")
-        max_h = max(hourly.values()) if hourly else 1
-        block_ranges = [
-            ("06–12", range(6, 12)),
-            ("12–18", range(12, 18)),
-            ("18–24", range(18, 24)),
-            ("00–06", range(0, 6)),
+        total_hourly = max(sum(hourly.values()), 1)
+        max_block = 1
+        blocks = []
+        block_defs = [
+            ("早上" if ZH else "AM",   "06–12", range(6, 12)),
+            ("下午" if ZH else "PM",   "12–18", range(12, 18)),
+            ("晚上" if ZH else "Eve",  "18–24", range(18, 24)),
+            ("凌晨" if ZH else "Late", "00–06", range(0, 6)),
         ]
-        for label, hours in block_ranges:
-            block_count = sum(hourly.get(h, 0) for h in hours)
-            if block_count == 0: continue
-            cells = ""
-            for h in hours:
-                c = hourly.get(h, 0)
-                cells += "▰" if c > 0 else "▱"
-            print(f"--{label}  {cells}  {block_count:>5,} | {ROW2}")
+        for label, time_str, hours in block_defs:
+            count = sum(hourly.get(h, 0) for h in hours)
+            peak_h = max(hours, key=lambda h: hourly.get(h, 0))
+            peak_v = hourly.get(peak_h, 0)
+            blocks.append((label, time_str, count, peak_h, peak_v))
+            if count > max_block: max_block = count
+        for label, time_str, count, peak_h, peak_v in blocks:
+            if count == 0: continue
+            pct = count / total_hourly * 100
+            b = bar(count, max_block, 8)
+            peak_str = f"peak {peak_h:02d}:00" if not ZH else f"峰值 {peak_h:02d}:00"
+            print(f"--{label} {time_str}  {count:>5,} ({pct:>2.0f}%)  {b}  {peak_str} | {ROW2}")
 
     # ── Top Projects ──
     projects = dict(local["projects"])
