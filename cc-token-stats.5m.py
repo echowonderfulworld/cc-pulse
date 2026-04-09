@@ -529,9 +529,23 @@ def main():
             all_models[model]["cost"] += data["cost"]
     total_model_msgs = max(sum(v["msgs"] for v in all_models.values()), 1)
 
-    # ─── Menu bar line ───
+    # ─── Menu bar line: cost + most urgent limit ───
+    usage = get_usage()
+    # Find the most urgent limit (highest utilization)
+    _top_util = 0
+    if usage:
+        for _uk in ["five_hour", "seven_day"]:
+            _uv = usage.get(_uk)
+            if _uv and _uv.get("utilization") is not None:
+                _top_util = max(_top_util, _uv["utilization"])
+
     if today["msgs"] > 0:
-        print(f"CC: {'今日' if ZH else 'Today'} {fc(today['cost'])} | {icon}")
+        limit_s = f" · {_top_util:.0f}%" if _top_util > 0 else ""
+        # Color menu bar text red when limit is critical
+        if _top_util >= 80:
+            print(f"CC: {fc(today['cost'])}{limit_s} | {icon} color=#E85838")
+        else:
+            print(f"CC: {fc(today['cost'])}{limit_s} | {icon}")
     else:
         print(f"CC: {tk(ta)} | {icon}")
     print("---")
@@ -548,7 +562,7 @@ def main():
         return f"{label}{' ' * max(pad, 1)}{val}"
 
     # ═══ 1. LIMITS (most urgent) ═══
-    usage = get_usage()
+    # usage already fetched above for menu bar line
     if usage:
         def _reset_label(reset_str):
             if not reset_str: return ""
