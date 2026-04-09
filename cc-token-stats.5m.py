@@ -708,39 +708,36 @@ def main():
     # DRILL-DOWN SECTIONS — 子菜单，按需展开
     # ═══════════════════════════════════════════════════════════════
 
-    # ── 7-Day Trend ──
+    # ── 7-Day Trend (all level 2, no level 3) ──
     max_cost = max((v["cost"] for v in daily.values()), default=1) or 1
     trend_title = "📈 最近 7 天" if ZH else "📈 Last 7 Days"
     print(f"{trend_title} | {H2}")
     for date, data in daily.items():
         dd = date[5:]
-        b = bar(data["cost"], max_cost, 10)
+        b = bar(data["cost"], max_cost, 8)
         if data["msgs"] > 0:
-            print(f"--{dd}  {fc(data['cost']):>8}  {b} | {ROW2}")
-            print(f"----{tk(data['tokens'])} tokens · {data['msgs']} msgs | {DIM}")
+            print(f"--{dd}  {fc(data['cost']):>8}  {b}  {tk(data['tokens'])} · {data['msgs']} msgs | {ROW2}")
         else:
-            print(f"--{dd}  {'—':>8}  {'▱' * 10} | {DIM}")
+            print(f"--{dd}  {'—':>8}  {'▱' * 8} | {DIM}")
     print("-----")
     if ZH:
         print(f"--合计: {fc(week_total_cost)} · {week_total_msgs} 条 | {DIM}")
     else:
         print(f"--Total: {fc(week_total_cost)} · {week_total_msgs} msgs | {DIM}")
 
-    # ── Models ──
+    # ── Models (all level 2) ──
     model_title = "🧩 模型分布" if ZH else "🧩 Models"
     print(f"{model_title} | {H2}")
     for model, data in sorted(all_models.items(), key=lambda x: -x[1]["cost"]):
         short = MODEL_SHORT.get(model, model)
         pct = data["msgs"] / total_model_msgs * 100
-        b = bar(data["msgs"], total_model_msgs, 8)
-        print(f"--{short} {pct:.0f}% · {fc(data['cost'])} | {ROW2}")
+        b = bar(data["msgs"], total_model_msgs, 6)
         if ZH:
-            print(f"----{data['msgs']:,} 条 · {tk(data['tokens'])} tokens | {DIM}")
+            print(f"--{short} {pct:.0f}% · {fc(data['cost'])} · {data['msgs']:,} 条 {b} | {ROW2}")
         else:
-            print(f"----{data['msgs']:,} msgs · {tk(data['tokens'])} tokens | {DIM}")
-        print(f"----{b} | {BAR}")
+            print(f"--{short} {pct:.0f}% · {fc(data['cost'])} · {data['msgs']:,} msgs {b} | {ROW2}")
 
-    # ── Hourly Activity ──
+    # ── Hourly Activity (all level 2) ──
     hourly = local["hourly"]
     if hourly:
         hour_title = "⏰ 活跃时段" if ZH else "⏰ Active Hours"
@@ -758,18 +755,11 @@ def main():
             cells = ""
             for h in hours:
                 c = hourly.get(h, 0)
-                if c == 0: cells += "▱"
-                elif c < max_h * 0.25: cells += "▰"
-                elif c < max_h * 0.6: cells += "▰"
-                else: cells += "▰"
+                cells += "▰" if c > 0 else "▱"
             msgs_label = "条" if ZH else "msgs"
-            print(f"--{label}  {cells}  {block_count} {msgs_label} | {ROW2}")
-            for h in hours:
-                c = hourly.get(h, 0)
-                if c > 0:
-                    print(f"----{h:02d}:00  {bar(c, max_h, 8)}  {c:,} | {DIM}")
+            print(f"--{label}  {cells}  {block_count:,} {msgs_label} | {ROW2}")
 
-    # ── Top Projects ──
+    # ── Top Projects (all level 2) ──
     projects = dict(local["projects"])
     if projects:
         proj_title = "📁 项目排行" if ZH else "📁 Top Projects"
@@ -778,9 +768,8 @@ def main():
         max_proj_cost = top[0][1]["cost"] if top else 1
         for name, data in top:
             short_name = name[:18] + "…" if len(name) > 18 else name
-            b = bar(data["cost"], max_proj_cost, 8)
-            print(f"--{short_name}  {fc(data['cost'])} | {ROW2}")
-            print(f"----{tk(data['tokens'])} · {data['msgs']} msgs  {b} | {DIM}")
+            b = bar(data["cost"], max_proj_cost, 6)
+            print(f"--{short_name}  {fc(data['cost'])} · {tk(data['tokens'])} · {data['msgs']} msgs {b} | {ROW2}")
 
     # ═══════════════════════════════════════════════════════════════
     # FOOTER
