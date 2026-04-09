@@ -377,19 +377,42 @@ def load_remotes():
 
 # ─── Render ──────────────────────────────────────────────────────
 
-# Styles
-H1   = "color=#4EC9B0 size=14"
-H2   = "color=#4EC9B0 size=13"
-ROW  = "color=#E0D8C8 size=13 font=Menlo"
-ROW2 = "color=#E0D8C8 size=12 font=Menlo"
-DIM  = "color=#9B9080 size=11 font=Menlo"
-DIM2 = "color=#9B9080 size=10 font=Menlo"
-META = "color=#6B6560 size=10"
-SEC  = "color=#7AAFCF size=13"
-SEC2 = "color=#7AAFCF size=12"
-MODL = "color=#8B8578 size=12 font=Menlo"
-BAR  = "color=#4EC9B0 size=11 font=Menlo"
-WARN = "color=#E8A838 size=12"
+# Styles — auto-detect dark/light mode
+def _is_dark():
+    try:
+        r = subprocess.run(["defaults","read","-g","AppleInterfaceStyle"],
+                           capture_output=True, text=True, timeout=3)
+        return "dark" in r.stdout.lower()
+    except: return True  # default to dark
+
+DARK = _is_dark()
+
+if DARK:
+    H1   = "color=#4EC9B0 size=14"
+    H2   = "color=#4EC9B0 size=13"
+    ROW  = "color=#E0D8C8 size=13 font=Menlo"
+    ROW2 = "color=#E0D8C8 size=12 font=Menlo"
+    DIM  = "color=#9B9080 size=11 font=Menlo"
+    DIM2 = "color=#9B9080 size=10 font=Menlo"
+    META = "color=#6B6560 size=10"
+    SEC  = "color=#7AAFCF size=13"
+    SEC2 = "color=#7AAFCF size=12"
+    MODL = "color=#8B8578 size=12 font=Menlo"
+    BAR  = "color=#4EC9B0 size=11 font=Menlo"
+    WARN = "color=#E8A838 size=12"
+else:
+    H1   = "color=#0E7A62 size=14"
+    H2   = "color=#0E7A62 size=13"
+    ROW  = "color=#2D2D2D size=13 font=Menlo"
+    ROW2 = "color=#2D2D2D size=12 font=Menlo"
+    DIM  = "color=#6B6560 size=11 font=Menlo"
+    DIM2 = "color=#6B6560 size=10 font=Menlo"
+    META = "color=#9B9080 size=10"
+    SEC  = "color=#2870A0 size=13"
+    SEC2 = "color=#2870A0 size=12"
+    MODL = "color=#5A5550 size=12 font=Menlo"
+    BAR  = "color=#0E7A62 size=11 font=Menlo"
+    WARN = "color=#C07820 size=12"
 
 def main():
     local = scan()
@@ -493,13 +516,16 @@ def main():
             return "▰" * filled + "▱" * (10 - filled)
 
         # Each gauge gets a distinct color
-        LINE_COLORS = ["#4EC9B0", "#7AAFCF", "#E0D8C8", "#E8A838"]
+        if DARK:
+            LINE_COLORS = ["#4EC9B0", "#7AAFCF", "#E0D8C8", "#E8A838"]
+        else:
+            LINE_COLORS = ["#0E7A62", "#2870A0", "#5A5550", "#C07820"]
         _color_idx = [0]
 
         def _danger_color(pct):
             """Override color when usage is critical."""
-            if pct >= 80: return "#E85838"
-            if pct >= 60: return "#E8A838"
+            if pct >= 80: return "#D03020" if not DARK else "#E85838"
+            if pct >= 60: return "#C07820" if not DARK else "#E8A838"
             return None
 
         LW = 8
