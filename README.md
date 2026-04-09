@@ -5,7 +5,9 @@
 See costs, plan limits, trends, and multi-machine stats at a glance — all in SwiftBar nested menus. No app to install, no server to run, just a single Python script.
 
 <p align="center">
-  <img src=".github/demo.gif" width="400" alt="cc-token-status demo" />
+  <img src=".github/demo.gif" width="360" alt="cc-token-status demo" />
+  <br><br>
+  <img src=".github/screenshot.png" alt="cc-token-status screenshot" />
 </p>
 
 ## Features
