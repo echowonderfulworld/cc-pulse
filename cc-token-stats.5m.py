@@ -123,11 +123,10 @@ def mlabel(h):
     return f"💻 {h}"
 
 def bar(val, maxval, width=12):
-    """Render a mini bar chart using block characters."""
-    if maxval <= 0: return " " * width
+    """Render a mini bar chart — ▰▱ works in both dark and light mode."""
+    if maxval <= 0: return "▱" * width
     filled = round(val / maxval * width)
-    empty = "░" if DARK else "▁"
-    return "█" * filled + empty * (width - filled)
+    return "▰" * filled + "▱" * (width - filled)
 
 # ─── Auto-update (once per day, silent) ──────────────────────────
 
@@ -720,8 +719,7 @@ def main():
             print(f"--{dd}  {fc(data['cost']):>8}  {b} | {ROW2}")
             print(f"----{tk(data['tokens'])} tokens · {data['msgs']} msgs | {DIM}")
         else:
-            empty_bar = '░' * 10 if DARK else '▁' * 10
-            print(f"--{dd}  {'—':>8}  {empty_bar} | {DIM}")
+            print(f"--{dd}  {'—':>8}  {'▱' * 10} | {DIM}")
     print("-----")
     if ZH:
         print(f"--合计: {fc(week_total_cost)} · {week_total_msgs} 条 | {DIM}")
@@ -760,10 +758,10 @@ def main():
             cells = ""
             for h in hours:
                 c = hourly.get(h, 0)
-                if c == 0: cells += "░" if DARK else "▁"
-                elif c < max_h * 0.25: cells += "▒" if DARK else "▃"
-                elif c < max_h * 0.6: cells += "▓" if DARK else "▅"
-                else: cells += "█"
+                if c == 0: cells += "▱"
+                elif c < max_h * 0.25: cells += "▰"
+                elif c < max_h * 0.6: cells += "▰"
+                else: cells += "▰"
             msgs_label = "条" if ZH else "msgs"
             print(f"--{label}  {cells}  {block_count} {msgs_label} | {ROW2}")
             for h in hours:
