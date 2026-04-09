@@ -1,10 +1,10 @@
 #!/bin/bash
 # cc-token-status installer & updater
-# Install: curl -fsSL https://raw.githubusercontent.com/echowonderfulworld/cc-token-status/main/install.sh | bash
-# Update:  curl -fsSL https://raw.githubusercontent.com/echowonderfulworld/cc-token-status/main/install.sh | bash -s -- --update
+# Install: curl -fsSL https://raw.githubusercontent.com/jayson-jia-dev/cc-token-status/main/install.sh | bash
+# Update:  curl -fsSL https://raw.githubusercontent.com/jayson-jia-dev/cc-token-status/main/install.sh | bash -s -- --update
 set -euo pipefail
 
-REPO="https://raw.githubusercontent.com/echowonderfulworld/cc-token-status/main"
+REPO="https://raw.githubusercontent.com/jayson-jia-dev/cc-token-status/main"
 PLUGIN_NAME="cc-token-stats.5m.py"
 VERSION="2.1.0"
 UPDATE_MODE=false
@@ -161,6 +161,6 @@ fi
 echo ""
 echo "   Config: $CONFIG_FILE"
 echo "   Plugin: $PLUGIN_DIR/$PLUGIN_NAME"
-echo "   Repo:   https://github.com/echowonderfulworld/cc-token-status"
+echo "   Repo:   https://github.com/jayson-jia-dev/cc-token-status"
 echo ""
 echo "To update later:  curl -fsSL ${REPO}/install.sh | bash -s -- --update"

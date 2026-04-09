@@ -28,7 +28,7 @@ See costs, plan limits, trends, and multi-machine stats at a glance — all in S
 ## Quick Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/echowonderfulworld/cc-token-status/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/jayson-jia-dev/cc-token-status/main/install.sh | bash
 ```
 
 The installer will:
@@ -43,7 +43,7 @@ The installer will:
 The plugin auto-updates daily. To update manually:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/echowonderfulworld/cc-token-status/main/install.sh | bash -s -- --update
+curl -fsSL https://raw.githubusercontent.com/jayson-jia-dev/cc-token-status/main/install.sh | bash -s -- --update
 ```
 
 ## Plan Usage Limits
