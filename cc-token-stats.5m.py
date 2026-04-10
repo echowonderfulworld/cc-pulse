@@ -165,38 +165,58 @@ def tier(m):
 
 # ─── Menu bar icon generator ─────────────────────────────────────
 
-_PIXEL_FONT = {
-    '0':['01110','10001','10001','10001','10001','10001','01110'],
-    '1':['00100','01100','00100','00100','00100','00100','01110'],
-    '2':['01110','10001','00001','00110','01000','10000','11111'],
-    '3':['01110','10001','00001','00110','00001','10001','01110'],
-    '4':['00010','00110','01010','10010','11111','00010','00010'],
-    '5':['11111','10000','11110','00001','00001','10001','01110'],
-    '6':['01110','10000','11110','10001','10001','10001','01110'],
-    '7':['11111','00001','00010','00100','01000','01000','01000'],
-    '8':['01110','10001','10001','01110','10001','10001','01110'],
-    '9':['01110','10001','10001','01111','00001','00001','01110'],
-    '%':['11001','11010','00100','00100','01011','10011','00000'],
-    'h':['10000','10000','10000','11110','10001','10001','10001'],
-    'd':['00001','00001','00001','01111','10001','10001','01111'],
-    '/':['00001','00010','00010','00100','01000','01000','10000'],
-    ' ':['00000','00000','00000','00000','00000','00000','00000'],
+# Pixel font — 4x6, rounder and cleaner than 5x7
+_PF = {
+    'C':['0110','1000','1000','1000','1000','0110'],
+    '0':['0110','1001','1001','1001','1001','0110'],
+    '1':['0010','0110','0010','0010','0010','0111'],
+    '2':['0110','1001','0010','0100','1000','1111'],
+    '3':['0110','1001','0010','0001','1001','0110'],
+    '4':['1010','1010','1111','0010','0010','0010'],
+    '5':['1111','1000','1110','0001','1001','0110'],
+    '6':['0110','1000','1110','1001','1001','0110'],
+    '7':['1111','0001','0010','0100','0100','0100'],
+    '8':['0110','1001','0110','1001','1001','0110'],
+    '9':['0110','1001','0111','0001','0001','0110'],
+    '%':['1001','0010','0100','1001','0000','0000'],
+    'h':['1000','1000','1110','1001','1001','1001'],
+    'd':['0001','0001','0111','1001','1001','0111'],
+    ' ':['0000','0000','0000','0000','0000','0000'],
 }
 
-def _make_menubar_icon(line1, line2):
-    """Generate a tiny PNG with two lines of pixel text for the menu bar."""
-    import struct, zlib
-    w, h = 48, 18
+def _make_menubar_icon(r1, r2):
+    """Generate menu bar icon: CC on left, two lines of stats on right."""
+    import struct, zlib, base64
+
+    def _render(text, px, x0, y0):
+        for ci, ch in enumerate(text):
+            g = _PF.get(ch, _PF[' '])
+            for cy in range(6):
+                for cx in range(4):
+                    x, y = x0 + ci * 5 + cx, y0 + cy
+                    if 0 <= x < len(px[0]) and 0 <= y < len(px):
+                        if g[cy][cx] == '1': px[y][x] = 1
+
+    # Canvas: CC(10px) + gap(3px) + stats(~35px) = ~48px wide, 16px tall
+    w, h = 50, 15
     px = [[0]*w for _ in range(h)]
-    for text, y0 in [(line1, 1), (line2, 10)]:
-        for cy in range(7):
-            for ci, ch in enumerate(text):
-                glyph = _PIXEL_FONT.get(ch, _PIXEL_FONT[' '])
-                for cx in range(5):
-                    x = ci * 6 + cx
-                    if x < w and (y0 + cy) < h:
-                        px[y0 + cy][x] = 1 if glyph[cy][cx] == '1' else 0
-    # Encode PNG
+
+    # Draw "CC" on the left (bigger: 2x scale)
+    cc_glyph = _PF['C']
+    for ci in range(2):  # two C's
+        for cy in range(6):
+            for cx in range(4):
+                if cc_glyph[cy][cx] == '1':
+                    bx, by = ci * 5 + cx, 2 + cy
+                    # 1x scale for CC
+                    if bx < w and by < h:
+                        px[by][bx] = 1
+
+    # Draw stats on the right
+    _render(r1, px, 13, 1)
+    _render(r2, px, 13, 8)
+
+    # Encode PNG (RGB)
     ihdr_data = struct.pack('>IIBBBBB', w, h, 8, 2, 0, 0, 0)
     ihdr_crc = zlib.crc32(b'IHDR' + ihdr_data) & 0xffffffff
     ihdr = struct.pack('>I', 13) + b'IHDR' + ihdr_data + struct.pack('>I', ihdr_crc)
@@ -211,7 +231,6 @@ def _make_menubar_icon(line1, line2):
     idat = struct.pack('>I', len(compressed)) + b'IDAT' + compressed + struct.pack('>I', idat_crc)
     iend_crc = zlib.crc32(b'IEND') & 0xffffffff
     iend = struct.pack('>I', 0) + b'IEND' + struct.pack('>I', iend_crc)
-    import base64
     return base64.b64encode(b'\x89PNG\r\n\x1a\n' + ihdr + idat + iend).decode()
 
 def mlabel(h):
@@ -690,10 +709,10 @@ def main():
         _sd = usage.get("seven_day")
         if _sd and _sd.get("utilization") is not None: _7d_util = _sd["utilization"]
 
-    # Menu bar: CC + icon with 5h/7d usage
+    # Menu bar: pixel icon with CC + 5h/7d usage
     if _5h_util > 0 or _7d_util > 0:
         icon_b64 = _make_menubar_icon(f"5h {_5h_util:.0f}%", f"7d {_7d_util:.0f}%")
-        print(f"CC | templateImage={icon_b64}")
+        print(f" | templateImage={icon_b64}")
     else:
         print("CC")
     print("---")
