@@ -185,36 +185,34 @@ _PF = {
 }
 
 def _make_menubar_icon(r1, r2):
-    """Generate menu bar icon: CC on left, two lines of stats on right."""
+    """Generate Retina (2x) menu bar icon: CC left, two stat lines right."""
     import struct, zlib, base64
+    S = 2  # scale factor for Retina
 
-    def _render(text, px, x0, y0):
+    def _draw(text, px, x0, y0, scale=1):
         for ci, ch in enumerate(text):
             g = _PF.get(ch, _PF[' '])
             for cy in range(6):
                 for cx in range(4):
-                    x, y = x0 + ci * 5 + cx, y0 + cy
-                    if 0 <= x < len(px[0]) and 0 <= y < len(px):
-                        if g[cy][cx] == '1': px[y][x] = 1
+                    if g[cy][cx] == '1':
+                        for sy in range(scale):
+                            for sx in range(scale):
+                                x = x0 + ci * (4 + 1) * scale + cx * scale + sx
+                                y = y0 + cy * scale + sy
+                                if 0 <= x < len(px[0]) and 0 <= y < len(px):
+                                    px[y][x] = 1
 
-    # Canvas: CC(10px) + gap(3px) + stats(~35px) = ~48px wide, 16px tall
-    w, h = 50, 15
+    # Retina canvas: display ~50x15 → render 100x30
+    w, h = 100 * S // 2, 30 * S // 2
     px = [[0]*w for _ in range(h)]
 
-    # Draw "CC" on the left (bigger: 2x scale)
-    cc_glyph = _PF['C']
-    for ci in range(2):  # two C's
-        for cy in range(6):
-            for cx in range(4):
-                if cc_glyph[cy][cx] == '1':
-                    bx, by = ci * 5 + cx, 2 + cy
-                    # 1x scale for CC
-                    if bx < w and by < h:
-                        px[by][bx] = 1
+    # CC on left — 2x scale (bold, readable)
+    _draw("CC", px, 0, 3 * S // 2, scale=S)
 
-    # Draw stats on the right
-    _render(r1, px, 13, 1)
-    _render(r2, px, 13, 8)
+    # Stats on right — 1.5x scale
+    stat_x = 22 * S // 2
+    _draw(r1, px, stat_x, 1, scale=S)
+    _draw(r2, px, stat_x, 2 + 6 * S, scale=S)
 
     # Encode PNG (RGB)
     ihdr_data = struct.pack('>IIBBBBB', w, h, 8, 2, 0, 0, 0)
@@ -709,12 +707,7 @@ def main():
         _sd = usage.get("seven_day")
         if _sd and _sd.get("utilization") is not None: _7d_util = _sd["utilization"]
 
-    # Menu bar: pixel icon with CC + 5h/7d usage
-    if _5h_util > 0 or _7d_util > 0:
-        icon_b64 = _make_menubar_icon(f"5h {_5h_util:.0f}%", f"7d {_7d_util:.0f}%")
-        print(f" | templateImage={icon_b64}")
-    else:
-        print("CC")
+    print("CC")
     print("---")
 
     # ═══════════════════════════════════════════════════════════════
