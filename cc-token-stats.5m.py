@@ -267,11 +267,11 @@ def check_and_notify(usage):
         if not obj or obj.get("utilization") is None: continue
         util = obj["utilization"]
         reset = obj.get("resets_at", "")
-        for t in thresholds:
-            state_key = f"{key}_{t}_{reset}"
-            if util >= t and state_key not in state:
+        for thresh in thresholds:
+            state_key = f"{key}_{thresh}_{reset}"
+            if util >= thresh and state_key not in state:
                 # Send notification
-                if t >= 95:
+                if thresh >= 95:
                     title = f"⛔ {name} {util:.0f}%"
                     msg = t("limit_crit")
                 else:
@@ -1066,4 +1066,11 @@ esac
     print(f"{quit_label} | bash='osascript' param1='-e' param2='quit app \"SwiftBar\"' terminal=false")
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception:
+        # Never crash — show basic menu bar item on any error
+        print("CC")
+        print("---")
+        print("Error occurred | color=red")
+        print("Click Refresh to retry | refresh=true")
