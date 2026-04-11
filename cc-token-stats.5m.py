@@ -641,12 +641,12 @@ def scan():
 
                             # Today
                             if msg_date == today_str:
-                                t = s["today"]
-                                t["tokens"] += total_t; t["cost"] += mc; t["msgs"] += 1
-                                t["inp"] += i; t["out"] += o; t["cw"] += w; t["cr"] += r
+                                td = s["today"]
+                                td["tokens"] += total_t; td["cost"] += mc; td["msgs"] += 1
+                                td["inp"] += i; td["out"] += o; td["cw"] += w; td["cr"] += r
                                 if m and m != "<synthetic>":
-                                    if m not in t["models"]: t["models"][m] = {"msgs": 0, "cost": 0.0}
-                                    t["models"][m]["msgs"] += 1; t["models"][m]["cost"] += mc
+                                    if m not in td["models"]: td["models"][m] = {"msgs": 0, "cost": 0.0}
+                                    td["models"][m]["msgs"] += 1; td["models"][m]["cost"] += mc
 
                             # Daily (all dates) + date range from message timestamps
                             if msg_date:
