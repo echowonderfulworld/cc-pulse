@@ -10,7 +10,7 @@ cc-token-status — Claude Code usage dashboard in your menu bar.
 https://github.com/jayson-jia-dev/cc-token-status
 """
 
-VERSION = "2.5.3"
+VERSION = "2.5.4"
 REPO_URL = "https://raw.githubusercontent.com/jayson-jia-dev/cc-token-status/main"
 
 import json, os, glob, socket, subprocess
@@ -89,6 +89,7 @@ STRINGS = {
     "late":        {"en":"Late","zh":"凌晨","es":"Madrugada","fr":"Nuit","ja":"深夜"},
     "reset":       {"en":"Resets","zh":"重置","es":"Reinicia","fr":"Réinit.","ja":"リセット"},
     "api_equiv":   {"en":"API equiv","zh":"等价 API","es":"Equiv. API","fr":"Equiv. API","ja":"API相当"},
+    "auto_upd":    {"en":"Auto Update","zh":"自动更新","es":"Auto actualizar","fr":"Mise à jour auto","ja":"自動更新"},
     "input":       {"en":"Input","zh":"输入","es":"Entrada","fr":"Entrée","ja":"入力"},
     "output":      {"en":"Output","zh":"输出","es":"Salida","fr":"Sortie","ja":"出力"},
     "cache_w":     {"en":"Cache W","zh":"缓存写","es":"Caché E","fr":"Cache É","ja":"Cache書"},
@@ -163,74 +164,6 @@ def tier(m):
         return "opus_old"
     if "haiku" in ml: return "haiku"
     return "sonnet"
-
-# ─── Menu bar icon generator ─────────────────────────────────────
-
-# Pixel font — 4x6, rounder and cleaner than 5x7
-_PF = {
-    'C':['0110','1000','1000','1000','1000','0110'],
-    '0':['0110','1001','1001','1001','1001','0110'],
-    '1':['0010','0110','0010','0010','0010','0111'],
-    '2':['0110','1001','0010','0100','1000','1111'],
-    '3':['0110','1001','0010','0001','1001','0110'],
-    '4':['1010','1010','1111','0010','0010','0010'],
-    '5':['1111','1000','1110','0001','1001','0110'],
-    '6':['0110','1000','1110','1001','1001','0110'],
-    '7':['1111','0001','0010','0100','0100','0100'],
-    '8':['0110','1001','0110','1001','1001','0110'],
-    '9':['0110','1001','0111','0001','0001','0110'],
-    '%':['1001','0010','0100','1001','0000','0000'],
-    'h':['1000','1000','1110','1001','1001','1001'],
-    'd':['0001','0001','0111','1001','1001','0111'],
-    ' ':['0000','0000','0000','0000','0000','0000'],
-}
-
-def _make_menubar_icon(r1, r2):
-    """Generate Retina (2x) menu bar icon: CC left, two stat lines right."""
-    import struct, zlib, base64
-    S = 2  # scale factor for Retina
-
-    def _draw(text, px, x0, y0, scale=1):
-        for ci, ch in enumerate(text):
-            g = _PF.get(ch, _PF[' '])
-            for cy in range(6):
-                for cx in range(4):
-                    if g[cy][cx] == '1':
-                        for sy in range(scale):
-                            for sx in range(scale):
-                                x = x0 + ci * (4 + 1) * scale + cx * scale + sx
-                                y = y0 + cy * scale + sy
-                                if 0 <= x < len(px[0]) and 0 <= y < len(px):
-                                    px[y][x] = 1
-
-    # Retina canvas: display ~50x15 → render 100x30
-    w, h = 100 * S // 2, 30 * S // 2
-    px = [[0]*w for _ in range(h)]
-
-    # CC on left — 2x scale (bold, readable)
-    _draw("CC", px, 0, 3 * S // 2, scale=S)
-
-    # Stats on right — 1.5x scale
-    stat_x = 22 * S // 2
-    _draw(r1, px, stat_x, 1, scale=S)
-    _draw(r2, px, stat_x, 2 + 6 * S, scale=S)
-
-    # Encode PNG (RGB)
-    ihdr_data = struct.pack('>IIBBBBB', w, h, 8, 2, 0, 0, 0)
-    ihdr_crc = zlib.crc32(b'IHDR' + ihdr_data) & 0xffffffff
-    ihdr = struct.pack('>I', 13) + b'IHDR' + ihdr_data + struct.pack('>I', ihdr_crc)
-    raw = b''
-    for y in range(h):
-        raw += b'\x00'
-        for x in range(w):
-            v = 255 if px[y][x] else 0
-            raw += bytes([v, v, v])
-    compressed = zlib.compress(raw)
-    idat_crc = zlib.crc32(b'IDAT' + compressed) & 0xffffffff
-    idat = struct.pack('>I', len(compressed)) + b'IDAT' + compressed + struct.pack('>I', idat_crc)
-    iend_crc = zlib.crc32(b'IEND') & 0xffffffff
-    iend = struct.pack('>I', 0) + b'IEND' + struct.pack('>I', iend_crc)
-    return base64.b64encode(b'\x89PNG\r\n\x1a\n' + ihdr + idat + iend).decode()
 
 # ─── User Level System ────────────────────────────────────────────
 
@@ -1252,7 +1185,7 @@ esac
     # Auto-update toggle
     update_on = CFG.get("auto_update", True)
     update_icon = "✓ " if update_on else "  "
-    update_label = f"{update_icon} {'自动更新' if LANG == 'zh' else 'Auto Update'}"
+    update_label = f"{update_icon} {t('auto_upd')}"
     print(f"{update_label} | bash={helper} param1=autoupdate terminal=false refresh=true")
 
     # Subscription plan selector
