@@ -2,7 +2,7 @@
 
 **Claude Code usage dashboard in your macOS menu bar.**
 
-See costs, plan limits, trends, and multi-machine stats at a glance — all in SwiftBar nested menus. No app to install, no server to run, just a single Python script.
+Costs, plan limits, trends, user level — all in one click. No app to install, no server to run, just a single Python script.
 
 <p align="center">
   <img src=".github/screenshot.png" alt="cc-token-status screenshot" />
@@ -12,20 +12,41 @@ See costs, plan limits, trends, and multi-machine stats at a glance — all in S
 
 | Feature | Description |
 |---------|-------------|
-| **Cost & Token Overview** | API-equivalent cost, session count, total tokens — always visible |
-| **Plan Usage Limits** | Official 5h session & 7d weekly quotas with live progress bars from Anthropic API |
+| **Plan Usage Limits** | Live 5h session & 7d weekly quotas with progress bars from Anthropic API |
+| **Cost & Token Overview** | API-equivalent cost, session count, total tokens |
 | **Subscription ROI** | How much your Pro/Max/Team plan saves vs API pricing |
+| **User Level** | 🌑→🌒→🌓→🌔→🌕→👑 cultivation rank based on multi-dimension scoring |
 | **Today at a Glance** | Today's spending, tokens, and message count |
-| **Daily Details** | Full cost history by day (newest first, older dates expandable) |
-| **Model Breakdown** | Per-model usage (Opus / Sonnet / Haiku) with percentages and cost |
-| **Hourly Activity** | Sparkline charts showing which hours you're most active: `▅▇██▇▄` |
+| **Daily Details** | Full cost history (newest first, older dates expandable) |
+| **Model Breakdown** | Per-model usage (Opus / Sonnet / Haiku) with percentages |
+| **Hourly Activity** | Sparkline charts: `▅▇██▇▄` shows which hours you're most active |
 | **Project Ranking** | Which projects consume the most tokens |
 | **Multi-Machine Sync** | iCloud Drive auto-sync across Macs — zero config |
 | **Usage Alerts** | macOS notifications at 80% and 95% plan limits |
-| **Settings Menu** | Toggle notifications, launch at login, switch subscription plan |
+| **Settings Menu** | Toggle notifications, auto-update, launch at login, switch plan |
 | **Auto-Update** | Checks GitHub daily, silently downloads new versions |
-| **11 Languages** | EN, 中文, ES, FR, PT, DE, RU, 日本語, 한국어, हिन्दी, العربية — auto-detected |
-| **Dark & Light Mode** | Adapts color scheme to your macOS appearance |
+| **5 Languages** | EN, 中文, ES, FR, 日本語 — auto-detected from system |
+| **Dark & Light Mode** | Adapts color scheme to macOS appearance |
+
+## User Level System
+
+Multi-dimension scoring based on your Claude Code usage maturity:
+
+```
+🌑 Lv.1  Starter      练气期
+🌒 Lv.2  Planner      筑基期
+🌓 Lv.3  Engineer     金丹期
+🌔 Lv.4  Integrator   元婴期
+🌕 Lv.5  Architect    化神期
+👑 Lv.6  Orchestrator 大乘期
+```
+
+Scored across 5 dimensions (100 points total):
+- **Usage depth** — median session length, activity density
+- **Context management** — CLAUDE.md, memory system, rules
+- **Tool ecosystem** — MCP servers, plugins (work tools discounted)
+- **Automation** — self-built commands, hooks, skills (framework installs weighted at 30%)
+- **Scale** — substantial projects, worktrees, tenure
 
 ## Quick Install
 
@@ -33,102 +54,56 @@ See costs, plan limits, trends, and multi-machine stats at a glance — all in S
 curl -fsSL https://raw.githubusercontent.com/jayson-jia-dev/cc-token-status/main/install.sh | bash
 ```
 
-The installer will:
-1. Check for Claude Code
-2. Install [SwiftBar](https://github.com/swiftbar/SwiftBar) if needed (via Homebrew)
-3. Download the plugin
-4. Ask your subscription tier (for ROI calculation)
-5. Detect iCloud Drive for multi-machine sync
-
 ## Update
 
-The plugin auto-updates daily. To update manually:
+Auto-updates daily. Manual update:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/jayson-jia-dev/cc-token-status/main/install.sh | bash -s -- --update
 ```
 
-## Plan Usage Limits
+## Uninstall
 
-Reads your Claude Code OAuth token from the macOS Keychain and queries the Anthropic API to show real-time plan usage:
-
+```bash
+curl -fsSL https://raw.githubusercontent.com/jayson-jia-dev/cc-token-status/main/uninstall.sh | bash
 ```
-Session ▰▰▱▱▱▱▱▱▱▱   7%  ↻4h5m
-Weekly  ▰▰▰▰▰▰▰▱▱▱  67%  ↻3d
-Sonnet  ▱▱▱▱▱▱▱▱▱▱   1%  ↻5d
-```
-
-- Color-coded: green (<60%) · amber (60–80%) · red (>80%)
-- Cached locally (4 min TTL) to respect API rate limits
-- Click to see exact reset time
 
 ## How It Works
 
-**Token & cost data** — Claude Code writes session logs to `~/.claude/projects/<project>/<session>.jsonl`. Each assistant message includes a `usage` object with `input_tokens`, `output_tokens`, `cache_creation_input_tokens`, and `cache_read_input_tokens`. The plugin scans all JSONL files, aggregates by day/hour/project/model, and calculates API-equivalent cost using official Anthropic pricing.
-
-**Plan limits** — Reads the OAuth access token from macOS Keychain (entry: `Claude Code-credentials`), calls `GET https://api.anthropic.com/api/oauth/usage` to get utilization percentages and reset times.
-
-**Multi-machine sync** — Each machine writes a `token-stats.json` summary to `~/Library/Mobile Documents/com~apple~CloudDocs/cc-token-stats/machines/<hostname>/`. The plugin reads all machines' data and shows a combined view.
-
-**Refresh cycle** — SwiftBar executes the plugin every 5 minutes (configured by the `.5m.` in the filename).
+- **Token & cost** — scans Claude Code JSONL session logs, calculates API-equivalent cost with official Anthropic pricing
+- **Plan limits** — reads OAuth token from macOS Keychain, queries `api.anthropic.com/api/oauth/usage`
+- **Multi-machine sync** — writes stats to iCloud Drive, reads other machines' data automatically
+- **Refresh** — SwiftBar executes the plugin every 5 minutes
 
 ## Pricing
 
-API-equivalent costs use official Anthropic pricing:
-
-| Model | Input | Output | Cache Write | Cache Read |
-|-------|-------|--------|-------------|------------|
+| Model | Input | Output | Cache Write (1h) | Cache Read |
+|-------|-------|--------|-----------------|------------|
 | Opus 4.5 / 4.6 | $5 | $25 | $10 | $0.50 |
-| Sonnet 4.5 / 4.6 | $3 | $15 | $3.75 | $0.30 |
-| Haiku 4.5 | $1 | $5 | $1.25 | $0.10 |
+| Sonnet 4.5 / 4.6 | $3 | $15 | $6 | $0.30 |
+| Haiku 4.5 | $1 | $5 | $2 | $0.10 |
 
-*USD per 1M tokens.*
+*USD per 1M tokens. [Official pricing](https://platform.claude.com/docs/en/about-claude/pricing)*
 
 ## Configuration
 
-Edit `~/.config/cc-token-stats/config.json`:
-
-```json
-{
-  "subscription": 100,
-  "subscription_label": "Max",
-  "language": "auto",
-  "sync_mode": "auto",
-  "machine_labels": {
-    "my-hostname": "Office Mac"
-  }
-}
-```
+Edit `~/.config/cc-token-stats/config.json` or use the in-app settings menu:
 
 | Key | Description | Default |
 |-----|-------------|---------|
-| `subscription` | Monthly plan cost in USD (0 to hide ROI) | `0` |
-| `subscription_label` | Plan name: `"Pro"`, `"Max"`, `"Team"` | `""` |
-| `language` | `"auto"`, `"en"`, or `"zh"` | `"auto"` |
-| `sync_mode` | `"auto"` (iCloud), `"custom"`, or `"off"` | `"auto"` |
-| `machine_labels` | Friendly names for hostnames | auto-detect |
-| `menu_bar_icon` | SwiftBar SF Symbol | `sfSymbol=sparkles.rectangle.stack` |
+| `subscription` | Monthly plan cost in USD | `0` |
+| `subscription_label` | `"Pro"`, `"Max"`, `"Team"` | `""` |
+| `language` | `"auto"`, `"en"`, `"zh"`, `"es"`, `"fr"`, `"ja"` | `"auto"` |
+| `notifications` | Usage limit alerts | `true` |
+| `auto_update` | Daily update check | `true` |
+| `sync_mode` | `"auto"` / `"off"` | `"auto"` |
 
 ## Requirements
 
 - macOS
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview)
 - Python 3.8+
-- [SwiftBar](https://github.com/swiftbar/SwiftBar) (auto-installed by installer)
-
-## Uninstall
-
-```bash
-# Remove plugin and config
-rm -f ~/Library/Application\ Support/SwiftBar/plugins/cc-token-stats.5m.py
-rm -rf ~/.config/cc-token-stats
-
-# Optional: remove iCloud sync data
-rm -rf ~/Library/Mobile\ Documents/com~apple~CloudDocs/cc-token-stats
-
-# Optional: uninstall SwiftBar
-brew uninstall --cask swiftbar
-```
+- [SwiftBar](https://github.com/swiftbar/SwiftBar) (auto-installed)
 
 ## License
 
