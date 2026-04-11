@@ -10,7 +10,7 @@ cc-token-status — Claude Code usage dashboard in your menu bar.
 https://github.com/jayson-jia-dev/cc-token-status
 """
 
-VERSION = "2.5.4"
+VERSION = "2.5.5"
 REPO_URL = "https://raw.githubusercontent.com/jayson-jia-dev/cc-token-status/main"
 
 import json, os, glob, socket, subprocess
@@ -540,8 +540,8 @@ def scan():
     for pd in glob.glob(os.path.join(base, "*")):
         if not os.path.isdir(pd): continue
         proj = os.path.basename(pd)
-        # Extract readable project name
-        parts = proj.replace("-", "/").split("/")
+        # Extract readable project name (filter empty parts from CJK chars encoded as dashes)
+        parts = [p for p in proj.replace("-", "/").split("/") if p]
         proj_name = parts[-1] if parts else proj[:20]
 
         for jf in glob.glob(os.path.join(pd, "*.jsonl")):
