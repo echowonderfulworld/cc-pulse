@@ -5,9 +5,9 @@
 Costs, plan limits, trends, user level — all in one click. No app to install, no server to run, just a single Python script.
 
 <p align="center">
-  <img src=".github/screenshot-zh.png" height="500" alt="中文" />
+  <img src=".github/screenshot-zh.png" height="700" alt="中文" />
   &nbsp;&nbsp;
-  <img src=".github/screenshot-en.png" height="500" alt="English" />
+  <img src=".github/screenshot-en.png" height="700" alt="English" />
 </p>
 
 ## Features
