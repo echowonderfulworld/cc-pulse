@@ -1060,7 +1060,9 @@ def main():
     print("---")
     devices_label = "设备" if LANG == "zh" else "Devices"
     if machine_count > 1:
-        print(f"── {devices_label} ── | {ST}")
+        sync_str = {"icloud": "iCloud", "custom": "Custom"}.get(SYNC_TYPE, "")
+        suffix = f" ({machine_count} mac · {sync_str})" if sync_str else f" ({machine_count} mac)"
+        print(f"── {devices_label}{suffix} ── | {ST}")
 
     for m in machines:
         ma = m["inp"] + m["out"] + m["cw"] + m["cr"]
