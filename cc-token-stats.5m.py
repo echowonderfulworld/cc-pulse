@@ -10,7 +10,7 @@ cc-token-status — Claude Code usage dashboard in your menu bar.
 https://github.com/jayson-jia-dev/cc-token-status
 """
 
-VERSION = "2.6.0"
+VERSION = "2.7.0"
 REPO_URL = "https://raw.githubusercontent.com/jayson-jia-dev/cc-token-status/main"
 
 import json, os, glob, socket, subprocess
@@ -465,10 +465,11 @@ def get_oauth_token():
     return None, None, None
 
 def fetch_usage():
-    """Fetch official plan usage from Anthropic API. Returns dict or None."""
+    """Fetch official plan usage from Anthropic API. Returns (data, error_hint).
+    error_hint is None on success, or a short string describing the failure."""
     token, sub_type, tier = get_oauth_token()
     if not token:
-        return None
+        return None, "no_token"
     try:
         import urllib.request
         req = urllib.request.Request(
@@ -483,25 +484,25 @@ def fetch_usage():
             data = json.loads(resp.read())
         data["_sub_type"] = sub_type
         data["_tier"] = tier
-        return data
+        return data, None
     except Exception:
-        return None
+        return None, "api_error"
 
 USAGE_CACHE = Path.home() / ".config" / "cc-token-stats" / ".usage_cache.json"
 
 def get_usage():
-    """Get usage with local cache to avoid rate limits."""
+    """Get usage with local cache. Returns (data_or_None, error_hint_or_None)."""
     # Try cache first (valid for 4 minutes, plugin runs every 5)
     if USAGE_CACHE.is_file():
         try:
             cached = json.loads(USAGE_CACHE.read_text())
             age = datetime.now().timestamp() - cached.get("_ts", 0)
             if age < 240:  # 4 minutes
-                return cached
+                return cached, None
         except Exception:
             pass
     # Fetch fresh
-    data = fetch_usage()
+    data, err = fetch_usage()
     if data:
         data["_ts"] = datetime.now().timestamp()
         try:
@@ -510,12 +511,16 @@ def get_usage():
             USAGE_CACHE.chmod(0o600)  # protect cached OAuth data
         except Exception:
             pass
-        return data
-    # Fallback to stale cache
+        return data, None
+    # Fallback to stale cache — max 30 minutes to avoid showing yesterday's data
     if USAGE_CACHE.is_file():
-        try: return json.loads(USAGE_CACHE.read_text())
+        try:
+            stale = json.loads(USAGE_CACHE.read_text())
+            stale_age = datetime.now().timestamp() - stale.get("_ts", 0)
+            if stale_age < 1800:  # 30 minutes
+                return stale, err
         except Exception: pass
-    return None
+    return None, err
 
 # ─── Data ────────────────────────────────────────────────────────
 
@@ -841,7 +846,7 @@ def main():
     total_model_msgs = max(sum(v["msgs"] for v in all_models.values()), 1)
 
     # ─── Menu bar line ───
-    usage = get_usage()
+    usage, usage_err = get_usage()
 
     # Get limits for panel display
     _5h_util = 0; _7d_util = 0
@@ -968,6 +973,21 @@ def main():
                 print(f"{padded} | {col_attr}size=13 font=Menlo")
                 if rt_local:
                     print(f"--{t('reset')}: {rt_local} | {DIM}")
+
+    # ═══ 1b. USAGE STATUS HINTS ═══
+    if not usage and usage_err:
+        WARN = "color=#888888 size=11"
+        if usage_err == "no_token":
+            hint = "⚠ No OAuth token — log in to Claude Code" if LANG != "zh" else "⚠ 未找到 OAuth token — 请登录 Claude Code"
+        else:
+            hint = "⚠ Cannot reach Anthropic API" if LANG != "zh" else "⚠ 无法连接 Anthropic API"
+        print(f"{hint} | {WARN}")
+
+    # ═══ 1c. FIRST-USE GUIDE ═══
+    if ts == 0:
+        GUIDE = "color=#888888 size=11"
+        guide_text = "Start a Claude Code session to see stats" if LANG != "zh" else "启动 Claude Code 会话以查看统计"
+        print(f"{guide_text} | {GUIDE}")
 
     # ═══ 2. TODAY + trend comparison ═══
     if today["msgs"] > 0:
