@@ -1172,7 +1172,8 @@ def main():
             short_name = f"{name[:14]:<14}" if len(name) <= 14 else f"{name[:13]}…"
             print(f"--{short_name}  {fc(data['cost']):>8}   {tk(data['tokens']):>8}   {data['msgs']:>5} msgs | {ROW2}")
 
-    # ═══ USER LEVEL (part of details group) ═══
+    # ═══ USER LEVEL ═══
+    print("---")
     try:
         _score, _lvl, _det = calc_user_level()
         _icon = LEVELS[_lvl][1]
@@ -1315,27 +1316,11 @@ esac
         label_short = name.split(" ")[0] if " " in name else name
         print(f"----{check}{name} (${price}/mo) | bash={helper} param1=sub param2={price} param3={label_short} terminal=false refresh=true")
 
-    # Sync info as meta text
-    sync_str = {"icloud": "iCloud", "custom": "Custom"}.get(SYNC_TYPE, "")
-    try:
-        _scan_cache_age = datetime.now().timestamp() - SCAN_CACHE_FILE.stat().st_mtime if SCAN_CACHE_FILE.is_file() else 0
-        if _scan_cache_age < 60:
-            _ago = "just now" if LANG != "zh" else "刚刚"
-        elif _scan_cache_age < 3600:
-            _mins = int(_scan_cache_age / 60)
-            _ago = f"{_mins}m ago" if LANG != "zh" else f"{_mins}分钟前"
-        else:
-            _ago = now
-    except Exception:
-        _ago = now
-    parts = [_ago, f"{machine_count} mac"]
-    if sync_str: parts.append(sync_str)
-    print(f"{' · '.join(parts)} | {META}")
-
-    print("---")
-    print("Refresh | refresh=true")
+    # Refresh and Quit inside settings submenu
+    print("-----")
+    print(f"--Refresh | refresh=true")
     quit_label = t("quit")
-    print(f"{quit_label} | bash='osascript' param1='-e' param2='quit app \"SwiftBar\"' terminal=false")
+    print(f"--{quit_label} | bash='osascript' param1='-e' param2='quit app \"SwiftBar\"' terminal=false")
 
 if __name__ == "__main__":
     try:
