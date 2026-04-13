@@ -10,7 +10,7 @@ cc-token-status — Claude Code usage dashboard in your menu bar.
 https://github.com/jayson-jia-dev/cc-token-status
 """
 
-VERSION = "1.0.0.2"
+VERSION = "1.0.0.3"
 REPO_URL = "https://raw.githubusercontent.com/jayson-jia-dev/cc-token-status/main"
 
 import json, os, glob, shlex, socket, subprocess
@@ -534,7 +534,7 @@ def get_usage():
             stale = json.loads(USAGE_CACHE.read_text())
             stale_age = datetime.now().timestamp() - stale.get("_ts", 0)
             if stale_age < 1800:  # 30 minutes
-                return stale, err
+                return stale, None  # has data, suppress error hint
         except Exception: pass
     return None, err
 
