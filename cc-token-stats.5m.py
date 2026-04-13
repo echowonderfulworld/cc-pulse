@@ -10,7 +10,7 @@ cc-token-status — Claude Code usage dashboard in your menu bar.
 https://github.com/jayson-jia-dev/cc-token-status
 """
 
-VERSION = "1.0.0.6"
+VERSION = "1.0.0.7"
 REPO_URL = "https://raw.githubusercontent.com/jayson-jia-dev/cc-token-status/main"
 
 import json, os, glob, shlex, socket, subprocess
@@ -174,10 +174,10 @@ def fc(n):
 def tier(m):
     ml = m.lower()
     if "opus" in ml:
-        # Opus 4.5+ uses new (cheaper) pricing
-        if "4-5" in m or "4-6" in m or "4.5" in m or "4.6" in m:
-            return "opus_new"
-        return "opus_old"
+        # Only legacy Opus (4.0/4.1) uses old pricing; all newer default to opus_new
+        if "4-0" in m or "4-1" in m or "4.0" in ml or "4.1" in ml:
+            return "opus_old"
+        return "opus_new"
     if "haiku" in ml: return "haiku"
     return "sonnet"
 
@@ -1046,16 +1046,23 @@ def main():
     if today["msgs"] > 0:
         print("---")
         today_label = t("today")
-        # Trend vs yesterday
-        yesterday_str = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
-        yd = daily.get(yesterday_str)
+        # Trend vs recent average (active days in last 30d, excluding today)
+        today_str_local = datetime.now().strftime("%Y-%m-%d")
+        recent_days = [(d, v) for d, v in daily_sorted
+                       if d != today_str_local
+                       and d >= (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+                       and v["cost"] > 0]
         trend = ""
-        if yd and yd["cost"] > 0:
-            pct_change = (today["cost"] - yd["cost"]) / yd["cost"] * 100
-            if pct_change >= 0:
-                trend = f" ↑{pct_change:.0f}%"
-            else:
-                trend = f" ↓{abs(pct_change):.0f}%"
+        if recent_days:
+            avg_cost = sum(v["cost"] for _, v in recent_days) / len(recent_days)
+            avg_msgs = sum(v["msgs"] for _, v in recent_days) / len(recent_days)
+            # Suppress trend when today's activity < 30% of daily average
+            if avg_cost > 0 and (avg_msgs <= 0 or today["msgs"] / avg_msgs >= 0.3):
+                pct_change = (today["cost"] - avg_cost) / avg_cost * 100
+                if pct_change >= 0:
+                    trend = f" ↑{pct_change:.0f}%"
+                else:
+                    trend = f" ↓{abs(pct_change):.0f}%"
         print(f"── {today_label} ── | {ST}")
         print(f"⚡ {fc(today['cost'])} · {today['msgs']} {t('msgs')}{trend} | {SEC}")
         # Token details in submenu

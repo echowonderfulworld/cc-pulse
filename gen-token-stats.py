@@ -27,9 +27,10 @@ MODEL_PRICING = {
 def get_model_tier(model_name):
     m = model_name.lower()
     if "opus" in m:
-        if "4-5" in model_name or "4-6" in model_name or "4.5" in m or "4.6" in m:
-            return "opus_new"
-        return "opus_old"
+        # Only legacy Opus (4.0/4.1) uses old pricing; all newer default to opus_new
+        if "4-0" in model_name or "4-1" in model_name or "4.0" in m or "4.1" in m:
+            return "opus_old"
+        return "opus_new"
     elif "haiku" in m:
         return "haiku"
     return "sonnet"
