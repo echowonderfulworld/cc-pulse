@@ -10,7 +10,7 @@ cc-token-status — Claude Code usage dashboard in your menu bar.
 https://github.com/jayson-jia-dev/cc-token-status
 """
 
-VERSION = "1.0.2.0"
+VERSION = "1.0.2.1"
 REPO_URL = "https://raw.githubusercontent.com/jayson-jia-dev/cc-token-status/main"
 
 import json, os, glob, shlex, socket, subprocess
@@ -90,6 +90,7 @@ STRINGS = {
     "late":        {"en":"Late","zh":"凌晨","es":"Madrugada","fr":"Nuit","ja":"深夜"},
     "reset":       {"en":"Resets","zh":"重置","es":"Reinicia","fr":"Réinit.","ja":"リセット"},
     "api_equiv":   {"en":"API equiv","zh":"等价 API","es":"Equiv. API","fr":"Equiv. API","ja":"API相当"},
+    "roi_note":    {"en":"Multiplier = API cost ÷ subscription paid","zh":"倍率 = API 等价成本 ÷ 累计订阅费","es":"Multiplicador = coste API ÷ suscripción","fr":"Multiplicateur = coût API ÷ abonnement","ja":"倍率 = APIコスト ÷ サブスク支払"},
     "auto_upd":    {"en":"Auto Update","zh":"自动更新","es":"Auto actualizar","fr":"Mise à jour auto","ja":"自動更新"},
     "input":       {"en":"Input","zh":"输入","es":"Entrada","fr":"Entrée","ja":"入力"},
     "output":      {"en":"Output","zh":"输出","es":"Salida","fr":"Sortie","ja":"出力"},
@@ -1174,6 +1175,7 @@ def main():
             daily_avg = tc / total_days
             monthly_proj = daily_avg * 30
             print(f"--Daily: {fc(daily_avg)} · Monthly: {fc(monthly_proj)} | {DIM}")
+        print(f"--{t('roi_note')} | {DIM}")
 
     # ═══ 5. MACHINES ═══
     print("---")
