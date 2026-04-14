@@ -960,18 +960,24 @@ def generate_dashboard():
     total_cr = sum(m.get("cr", 0) + m.get("cache_read_tokens", 0) for m in machines)
     total_tokens = total_inp + total_out + total_cw + total_cr
 
-    # Daily average
+    # Date range across all machines
+    dmin_all = local.get("d_min")
+    for r in remotes:
+        rd = r.get("d_min") or r.get("date_range", {}).get("min")
+
+    # Daily average based on calendar span
     active_days = len([v for v in daily.values() if v.get("cost", 0) > 0])
-    daily_avg = round(tc / max(active_days, 1), 2)
+    if dmin_all:
+        span_days = (datetime.now() - datetime.strptime(dmin_all, "%Y-%m-%d")).days + 1
+    else:
+        span_days = max(active_days, 1)
+    daily_avg = round(tc / max(span_days, 1), 2)
     limits = {}
     if usage:
         for key in ["five_hour", "seven_day", "seven_day_sonnet", "seven_day_opus"]:
             obj = usage.get(key)
             if obj and obj.get("utilization") is not None:
                 limits[key] = {"util": obj["utilization"], "resets_at": obj.get("resets_at", "")}
-    dmin_all = local.get("d_min")
-    for r in remotes:
-        rd = r.get("d_min") or r.get("date_range", {}).get("min")
         if rd and (not dmin_all or rd < dmin_all): dmin_all = rd
     roi = {}
     if sub > 0 and dmin_all:
@@ -992,7 +998,7 @@ def generate_dashboard():
         "today": {"cost": round(today.get("cost", 0), 2), "msgs": today.get("msgs", 0)},
         "total": {"cost": round(tc, 2), "sessions": ts, "tokens": total_tokens,
                   "inp": total_inp, "out": total_out, "cw": total_cw, "cr": total_cr},
-        "daily_avg": daily_avg, "active_days": active_days,
+        "daily_avg": daily_avg, "active_days": active_days, "span_days": span_days,
         "lang": LANG, "generated": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }, ensure_ascii=False)
 
@@ -1078,7 +1084,7 @@ $('T').textContent=t('title');$('G').textContent=D.generated;
 
 // 6 KPI Cards
 $('k1l').textContent=t('today');$('k1v').textContent=fc(D.today.cost);$('k1u').textContent=D.today.msgs+' '+t('msgs');
-$('k2l').textContent=t('total');$('k2v').textContent=fc(D.total.cost);$('k2u').textContent=D.active_days+' '+t('days');
+$('k2l').textContent=t('total');$('k2v').textContent=fc(D.total.cost);$('k2u').textContent=D.span_days+' '+t('days');
 $('k3l').textContent=t('roi');
 if(D.roi.multiplier){$('k3v').textContent=D.roi.multiplier+'x';$('k3u').textContent=fc(D.roi.cost)+' / $'+D.roi.paid;}
 else{$('k3v').textContent='\u2014';$('k3u').textContent='';}
