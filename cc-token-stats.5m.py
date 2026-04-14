@@ -1067,7 +1067,7 @@ cost:zh?'费用':'Cost',msgs:zh?'消息':'Msgs',days:zh?'天':'days',
 input:zh?'输入':'Input',output:zh?'输出':'Output',cache_w:zh?'缓存写':'Cache W',cache_r:zh?'缓存读':'Cache R'
 })[k]||k;
 const fc=n=>n>=1e4?'$'+n.toLocaleString('en',{maximumFractionDigits:0}):'$'+n.toFixed(2);
-const fk=n=>n>=1e9?(n/1e9).toFixed(1)+'B':n>=1e6?(n/1e6).toFixed(1)+'M':n>=1e3?(n/1e3).toFixed(0)+'K':n;
+const fk=n=>{if(zh){if(n>=1e8)return(n/1e8).toFixed(1)+' \u4ebf';if(n>=1e4)return(n/1e4).toFixed(0)+' \u4e07';return n.toLocaleString();}return n>=1e9?(n/1e9).toFixed(1)+'B':n>=1e6?(n/1e6).toFixed(1)+'M':n>=1e3?(n/1e3).toFixed(0)+'K':n;};
 const C={p:'#58a6ff',t:'#58d4ab',g:'#d4a04a',d:'#f85149',w:'#d29922',op:'#a371f7',sn:'#58a6ff',hk:'#3fb950',m:'#484f58'};
 const tt={backgroundColor:'#1c2128',borderColor:'#30363d',textStyle:{color:'#c9d1d9'}};
 const ax={axisLine:{lineStyle:{color:'#30363d'}},splitLine:{lineStyle:{color:'#21262d'}},axisLabel:{color:'#8b949e',fontSize:10}};
@@ -1102,29 +1102,47 @@ dataZoom:[{type:'inside'},{type:'slider',height:18,bottom:0,borderColor:'#30363d
 fillerColor:'rgba(88,212,171,0.1)',handleStyle:{color:'#58d4ab'},textStyle:{color:'#8b949e'}}],
 grid:{left:55,right:55,top:30,bottom:38}});
 
-// 2. Model Distribution (donut)
+// 2. Model Distribution (auto: donut if balanced, bars if one dominates)
 $('h2').textContent=t('model');
 const mClr={};Object.keys(D.models).forEach(k=>{const l=k.toLowerCase();mClr[k]=l.includes('opus')?C.op:l.includes('haiku')?C.hk:C.sn;});
+const mTotal=Object.values(D.models).reduce((a,b)=>a+b,0)||1;
+const mMax=Math.max(...Object.values(D.models));
+if(mMax/mTotal>0.9){
+// One model dominates >90% — use horizontal bars with labels for readability
+const mEntries=Object.entries(D.models).sort((a,b)=>b[1]-a[1]);
+const mMsgs=D.model_msgs||{};
+let mHtml='';
+mEntries.forEach(([k,v])=>{const pct=v/mTotal*100;const msgs=mMsgs[k]||0;
+mHtml+='<div style="margin:12px 0"><div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:12px">'
++'<span style="color:'+(mClr[k]||C.m)+';font-weight:600">'+k+'</span>'
++'<span style="color:#8b949e">'+fc(v)+' \u00b7 '+msgs.toLocaleString()+' msgs \u00b7 '+pct.toFixed(1)+'%</span></div>'
++'<div style="background:#21262d;border-radius:4px;height:8px;overflow:hidden">'
++'<div style="background:'+(mClr[k]||C.m)+';height:100%;border-radius:4px;width:'+Math.max(pct,0.8)+'%"></div>'
++'</div></div>';});
+$('c2').style.cssText='padding:5px 0';$('c2').className='';
+$('c2').insertAdjacentHTML('beforeend',mHtml);
+}else{
 echarts.init($('c2')).setOption({
 tooltip:{...tt,formatter:p=>p.name+': '+fc(p.value)+' ('+p.percent+'%)'},
 series:[{type:'pie',radius:['40%','68%'],center:['50%','55%'],
 label:{color:'#c9d1d9',fontSize:10,formatter:'{b}\n{d}%'},
 data:Object.entries(D.models).map(([k,v])=>({name:k,value:v,itemStyle:{color:mClr[k]||C.m}}))}]});
+}
 
-// 7. Token Composition (horizontal stacked bar)
+// 7. Token Composition (progress bars via DOM)
 $('h7').textContent=t('token_comp');
-const tk=D.total;
-echarts.init($('c7')).setOption({
-tooltip:{...tt,formatter:p=>{let s='';p.forEach(x=>{s+=x.marker+x.seriesName+': '+fk(x.value)+'<br/>';});return s;}},
-legend:{data:[t('input'),t('output'),t('cache_w'),t('cache_r')],textStyle:{color:'#8b949e',fontSize:10},top:0},
-xAxis:{type:'value',...ax,axisLabel:{...ax.axisLabel,formatter:v=>fk(v)}},
-yAxis:{type:'category',data:['Tokens'],...ax,show:false},
-series:[
-{name:t('input'),type:'bar',stack:'t',data:[tk.inp],itemStyle:{color:'#58a6ff'},barWidth:40},
-{name:t('output'),type:'bar',stack:'t',data:[tk.out],itemStyle:{color:'#58d4ab'}},
-{name:t('cache_w'),type:'bar',stack:'t',data:[tk.cw],itemStyle:{color:'#d4a04a'}},
-{name:t('cache_r'),type:'bar',stack:'t',data:[tk.cr],itemStyle:{color:'#a371f7'}}],
-grid:{left:10,right:16,top:35,bottom:10}});
+const tk=D.total,tkAll=tk.inp+tk.out+tk.cw+tk.cr||1;
+const tkItems=[{l:t('cache_r'),v:tk.cr,c:'#a371f7'},{l:t('cache_w'),v:tk.cw,c:'#d4a04a'},
+{l:t('output'),v:tk.out,c:'#58d4ab'},{l:t('input'),v:tk.inp,c:'#58a6ff'}];
+let tkHtml='';
+tkItems.forEach(x=>{const pct=(x.v/tkAll*100);
+tkHtml+='<div style="margin:10px 0"><div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:11px">'
++'<span style="color:#c9d1d9">'+x.l+'</span><span style="color:#8b949e">'+fk(x.v)+' ('+pct.toFixed(1)+'%)</span></div>'
++'<div style="background:#21262d;border-radius:4px;height:8px;overflow:hidden">'
++'<div style="background:'+x.c+';height:100%;border-radius:4px;width:'+Math.max(pct,0.5)+'%"></div>'
++'</div></div>';});
+$('c7').style.cssText='padding:5px 0';$('c7').className='';
+$('c7').insertAdjacentHTML('beforeend',tkHtml);
 
 // 5. Rate Limits (gauges)
 $('h5').textContent=t('limits');
@@ -1165,7 +1183,7 @@ xAxis:{type:'value',...ax,axisLabel:{...ax.axisLabel,formatter:v=>'$'+v}},
 yAxis:{type:'category',data:pn,...ax,axisLabel:{...ax.axisLabel,width:75,overflow:'truncate'}},
 series:[{type:'bar',data:pc,barWidth:'55%',itemStyle:{color:C.g,borderRadius:[0,4,4,0]},
 label:{show:true,position:'right',color:'#8b949e',fontSize:9,formatter:p=>fc(p.value)}}],
-grid:{left:85,right:55,top:8,bottom:15}});
+grid:{left:85,right:55,top:8,bottom:28}});
 
 // 6. Machines (bar)
 $('h6').textContent=t('machines');
