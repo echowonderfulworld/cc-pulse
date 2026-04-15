@@ -10,7 +10,7 @@ cc-token-status — Claude Code usage dashboard in your menu bar.
 https://github.com/jayson-jia-dev/cc-token-status
 """
 
-VERSION = "1.2.0.2"
+VERSION = "1.2.1.0"
 REPO_URL = "https://raw.githubusercontent.com/jayson-jia-dev/cc-token-status/main"
 
 import json, os, glob, shlex, socket, subprocess, sys
@@ -103,8 +103,6 @@ STRINGS = {
     "next_level":  {"en":"Next","zh":"下一级","es":"Siguiente","fr":"Suivant","ja":"次"},
     "no_token":    {"en":"⚠ No OAuth token — log in to Claude Code","zh":"⚠ 未找到 OAuth token — 请登录 Claude Code","es":"⚠ Sin token OAuth — inicie sesión en Claude Code","fr":"⚠ Pas de token OAuth — connectez-vous à Claude Code","ja":"⚠ OAuthトークンなし — Claude Codeにログイン"},
     "api_error":   {"en":"⚠ Cannot reach Anthropic API","zh":"⚠ 无法连接 Anthropic API","es":"⚠ No se puede conectar a la API","fr":"⚠ API Anthropic inaccessible","ja":"⚠ Anthropic APIに接続できません"},
-    "rate_limit":  {"en":"⚠ API rate limited — using cached data","zh":"⚠ API 请求频率受限 — 使用缓存数据","es":"⚠ API limitada — usando caché","fr":"⚠ API limitée — données en cache","ja":"⚠ APIレート制限 — キャッシュ使用中"},
-    "backoff":     {"en":"⏳ API cooldown — retry in {0}m","zh":"⏳ API 冷却中 — {0}分钟后重试","es":"⏳ Enfriamiento API — reintento en {0}m","fr":"⏳ Pause API — nouvel essai dans {0}m","ja":"⏳ APIクールダウン — {0}分後にリトライ"},
     "first_use":   {"en":"Start a Claude Code session to see stats","zh":"启动 Claude Code 会话以查看统计","es":"Inicie una sesión de Claude Code","fr":"Démarrez une session Claude Code","ja":"Claude Codeセッションを開始してください"},
     "dim_usage":   {"en":"Usage","zh":"使用深度","es":"Uso","fr":"Utilisation","ja":"使用量"},
     "dim_context": {"en":"Context","zh":"上下文","es":"Contexto","fr":"Contexte","ja":"コンテキスト"},
@@ -611,7 +609,6 @@ USAGE_CACHE = Path.home() / ".config" / "cc-token-stats" / ".usage_cache.json"
 BACKOFF_STATE_FILE = Path.home() / ".config" / "cc-token-stats" / ".backoff_state.json"
 
 def _load_backoff():
-    """Load backoff state. Returns (until_ts, consecutive_429_count)."""
     try:
         if BACKOFF_STATE_FILE.is_file():
             s = json.loads(BACKOFF_STATE_FILE.read_text())
@@ -629,30 +626,62 @@ def _clear_backoff():
     try: BACKOFF_STATE_FILE.unlink(missing_ok=True)
     except Exception: pass
 
+def _read_synced_usage():
+    """Try to read fresh usage data from another machine via sync directory."""
+    if not SYNC_DIR:
+        return None
+    try:
+        shared = os.path.join(SYNC_DIR, "shared_usage.json")
+        if not os.path.isfile(shared):
+            return None
+        data = json.loads(Path(shared).read_text())
+        return data
+    except Exception:
+        return None
+
+def _write_synced_usage(data):
+    """Share fresh usage data for other machines via sync directory."""
+    if not SYNC_DIR:
+        return
+    try:
+        shared = os.path.join(SYNC_DIR, "shared_usage.json")
+        os.makedirs(os.path.dirname(shared), exist_ok=True)
+        Path(shared).write_text(json.dumps(data))
+    except Exception:
+        pass
+
 def get_usage():
-    """Get usage with local cache + exponential backoff on 429."""
+    """Get usage with multi-layer cache: local → synced → API (with backoff)."""
     now_ts = datetime.now().timestamp()
-    # Try cache first (valid for 9 minutes — API polled ~every 10m to avoid 429)
+
+    # Layer 1: local cache (< 9 minutes)
     if USAGE_CACHE.is_file():
         try:
             cached = json.loads(USAGE_CACHE.read_text())
             age = now_ts - cached.get("_ts", 0)
             if age < 540:  # 9 minutes
                 return cached, None
-        except Exception:
-            pass
-    # If in backoff period after 429, skip API call and show cooldown hint
+        except Exception: pass
+
+    # Layer 2: synced usage from another machine (< 9 minutes)
+    synced = _read_synced_usage()
+    if synced:
+        synced_age = now_ts - synced.get("_ts", 0)
+        if synced_age < 540:
+            # Save to local cache so we don't re-read sync dir every run
+            try:
+                USAGE_CACHE.parent.mkdir(parents=True, exist_ok=True)
+                USAGE_CACHE.write_text(json.dumps(synced))
+                USAGE_CACHE.chmod(0o600)
+            except Exception: pass
+            return synced, None
+
+    # Layer 3: check backoff — if in cooldown, use whatever cache we have
     backoff_until, backoff_count = _load_backoff()
     if backoff_until > now_ts:
-        remaining_min = max(1, int((backoff_until - now_ts) / 60 + 0.5))
-        hint = f"backoff:{remaining_min}"
-        if USAGE_CACHE.is_file():
-            try:
-                cached = json.loads(USAGE_CACHE.read_text())
-                return cached, hint
-            except Exception: pass
-        return None, hint
-    # Fetch fresh
+        return _best_cached(now_ts), None  # silent — data is just slightly stale
+
+    # Layer 4: fetch from API
     data, err = fetch_usage()
     if data:
         data["_ts"] = now_ts
@@ -660,34 +689,42 @@ def get_usage():
             USAGE_CACHE.parent.mkdir(parents=True, exist_ok=True)
             USAGE_CACHE.write_text(json.dumps(data))
             USAGE_CACHE.chmod(0o600)
-        except Exception:
-            pass
-        _clear_backoff()  # successful fetch — reset backoff
+        except Exception: pass
+        _write_synced_usage(data)  # share with other machines
+        _clear_backoff()
         return data, None
-    # On 429: use Retry-After if available, else exponential backoff (10m→20m→40m→60m cap)
+
+    # On 429: backoff (10m → 20m → 40m → 60m cap), respect Retry-After
     if err and err.startswith("rate_limit"):
         new_count = backoff_count + 1
-        # Check for server-provided Retry-After (format: "rate_limit:60")
         retry_after_secs = None
         if ":" in err:
             try: retry_after_secs = int(err.split(":")[1])
             except (ValueError, IndexError): pass
-        if retry_after_secs and retry_after_secs > 0:
-            delay = min(retry_after_secs, 3600)
-        else:
-            delay = min(600 * (2 ** (new_count - 1)), 3600)
+        delay = min(retry_after_secs, 3600) if retry_after_secs and retry_after_secs > 0 \
+            else min(600 * (2 ** (new_count - 1)), 3600)
         _save_backoff(now_ts + delay, new_count)
-        remaining_min = max(1, int(delay / 60 + 0.5))
-        err = f"backoff:{remaining_min}"  # show cooldown hint, not error
-    # Fallback to stale cache — 2 hours
-    if USAGE_CACHE.is_file():
-        try:
-            stale = json.loads(USAGE_CACHE.read_text())
-            stale_age = now_ts - stale.get("_ts", 0)
-            if stale_age < 7200:
-                return stale, err
-        except Exception: pass
+        return _best_cached(now_ts), None  # silent fallback
+
+    # Other errors (no_token, api_error): only show if no data at all
+    cached = _best_cached(now_ts)
+    if cached:
+        return cached, None
     return None, err
+
+def _best_cached(now_ts):
+    """Return best available cached data (local or synced), up to 2h stale."""
+    for source in [USAGE_CACHE]:
+        try:
+            if source.is_file():
+                data = json.loads(source.read_text())
+                if now_ts - data.get("_ts", 0) < 7200:
+                    return data
+        except Exception: pass
+    synced = _read_synced_usage()
+    if synced and now_ts - synced.get("_ts", 0) < 7200:
+        return synced
+    return None
 
 # ─── Data ────────────────────────────────────────────────────────
 
@@ -1503,16 +1540,9 @@ def main():
                 elif rt_local:
                     print(f"--{t('reset')}: {rt_local} | {DIM}")
 
-    # ═══ 1b. USAGE STATUS HINTS ═══
+    # ═══ 1b. USAGE STATUS HINTS (only when NO data at all) ═══
     HINT = "color=#888888 size=11"
-    if usage_err and usage_err.startswith("backoff:"):
-        remaining = usage_err.split(":")[1]
-        hint = t("backoff").format(remaining)
-        print(f"{hint} | {HINT}")
-    elif usage_err == "rate_limit":
-        hint = t("rate_limit")
-        print(f"{hint} | {HINT}")
-    elif not usage and usage_err:
+    if not usage and usage_err:
         hint = t("no_token") if usage_err == "no_token" else t("api_error")
         print(f"{hint} | {HINT}")
 
