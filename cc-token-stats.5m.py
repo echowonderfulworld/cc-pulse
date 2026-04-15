@@ -1388,10 +1388,10 @@ var data=[],mx=0;
 for(var wd=0;wd<7;wd++){var wdD=hm[String(wd)]||{};for(var hr=0;hr<24;hr++){var v=wdD[String(hr)]||0;data.push([hr,wd,v]);if(v>mx)mx=v;}}
 echarts.init($('c3')).setOption({
 tooltip:{backgroundColor:'#1c2128',borderColor:'#30363d',textStyle:{color:'#c9d1d9'},formatter:function(p){return wdays[p.value[1]]+' '+hrs[p.value[0]]+':00 — '+p.value[2]+(zh?' 条消息':' msgs');}},
-grid:{left:50,right:30,top:10,bottom:30},
+grid:{left:50,right:30,top:10,bottom:55},
 xAxis:{type:'category',data:hrs,axisLabel:{color:'#8b949e',fontSize:10,interval:2},axisLine:{lineStyle:{color:'#30363d'}}},
 yAxis:{type:'category',data:wdays,axisLabel:{color:'#8b949e',fontSize:11},axisLine:{lineStyle:{color:'#30363d'}}},
-visualMap:{min:0,max:mx||1,calculable:false,orient:'horizontal',left:'center',bottom:2,itemWidth:12,itemHeight:200,textStyle:{color:'#8b949e',fontSize:9},inRange:{color:['#161b22','#0e4429','#006d32','#26a641','#39d353']}},
+visualMap:{min:0,max:mx||1,calculable:false,orient:'horizontal',left:'center',bottom:4,itemWidth:12,itemHeight:180,textStyle:{color:'#8b949e',fontSize:9},inRange:{color:['#161b22','#0e4429','#006d32','#26a641','#39d353']}},
 series:[{type:'heatmap',data:data,label:{show:false},itemStyle:{borderColor:'#0d1117',borderWidth:2,borderRadius:2},emphasis:{itemStyle:{borderColor:'#58a6ff'}}}]});
 })();
 
