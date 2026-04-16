@@ -1015,6 +1015,44 @@ def load_remotes():
 
 DASHBOARD_FILE = Path.home() / ".config" / "cc-token-stats" / "dashboard.html"
 
+def _build_level_data():
+    """Build level data dict for dashboard payload."""
+    try:
+        score, lvl, details = calc_user_level()
+        icon = LEVELS[lvl][1]
+        en_name = LEVELS[lvl][2]
+        zh_name = LEVELS[lvl][3]
+        cur_threshold = LEVELS[lvl][0]
+        next_threshold = LEVELS[lvl + 1][0] if lvl < len(LEVELS) - 1 else 100
+        next_icon = LEVELS[lvl + 1][1] if lvl < len(LEVELS) - 1 else ""
+        next_en = LEVELS[lvl + 1][2] if lvl < len(LEVELS) - 1 else ""
+        next_zh = LEVELS[lvl + 1][3] if lvl < len(LEVELS) - 1 else ""
+        gap = next_threshold - score
+        dims_sorted = sorted(details.items(), key=lambda x: x[1])
+        tips = []
+        tip_map = {
+            "usage": {"en": "Use longer sessions (50+ messages per session)", "zh": "进行更深度的对话（单次会话 50+ 消息）"},
+            "context": {"en": "Create CLAUDE.md, add memory files, set up rules", "zh": "创建 CLAUDE.md，添加记忆文件，配置 rules"},
+            "tools": {"en": "Set up MCP servers and install plugins", "zh": "配置 MCP 服务器，安装插件"},
+            "automation": {"en": "Create custom commands, skills, or hooks", "zh": "创建自定义 commands、skills 或 hooks"},
+            "scale": {"en": "Work on more projects, use worktrees", "zh": "在更多项目中使用，尝试 worktrees"},
+        }
+        for dim, val in dims_sorted[:2]:
+            if val < 16:
+                tips.append({"dim": dim, "score": val, "max": 20,
+                             "tip_en": tip_map.get(dim, {}).get("en", ""),
+                             "tip_zh": tip_map.get(dim, {}).get("zh", "")})
+        return {
+            "score": score, "lvl": lvl + 1, "icon": icon,
+            "en_name": en_name, "zh_name": zh_name,
+            "details": details, "max_score": 100,
+            "cur_threshold": cur_threshold, "next_threshold": next_threshold,
+            "gap": gap, "next_icon": next_icon, "next_en": next_en, "next_zh": next_zh,
+            "tips": tips,
+        }
+    except Exception:
+        return {}
+
 def generate_dashboard():
     """Generate a self-contained HTML dashboard and open in browser."""
     local = scan()
@@ -1198,6 +1236,7 @@ def generate_dashboard():
         "sessions_by_day": sessions_by_day,
         "forecast": forecast,
         "anomaly_dates": anomaly_dates,
+        "level": _build_level_data(),
         "lang": LANG, "generated": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }, ensure_ascii=False)
 
@@ -1256,6 +1295,8 @@ h3{font-size:12px;color:#8b949e;font-weight:500;margin-bottom:10px;text-transfor
 <!-- Row 5: Machines + Daily detail table -->
 <div class="card s4" id="card6"><h3 id="h6"></h3><div id="c6" class="ch"></div></div>
 <div class="card s8" id="card8"><h3 id="h8"></h3><div id="c8" style="max-height:400px;overflow-y:auto"></div></div>
+<!-- Level Panel -->
+<div class="card s12" id="cardLevel" style="display:none"><div id="levelPanel"></div></div>
 </div>
 <script>
 const D=__DATA__;
@@ -1471,6 +1512,82 @@ var hidden=subs[0].style.display==='none';
 subs.forEach(function(s){s.style.display=hidden?'':'none';});
 tr.cells[0].textContent=(hidden?'\u25bc ':'\u25b6 ')+d.slice(5);});
 $('c8').appendChild(tbl);
+})();
+
+// 9. Level Panel (radar + progress bars + tips)
+(function(){
+var L=D.level;if(!L||!L.score&&L.score!==0)return;
+$('cardLevel').style.display='';
+var name=zh?L.zh_name:L.en_name;
+var nextName=zh?L.next_zh:L.next_en;
+var dimLabels={usage:zh?'使用深度':'Usage',context:zh?'上下文':'Context',tools:zh?'工具生态':'Tools',automation:zh?'自动化':'Automation',scale:zh?'规模化':'Scale'};
+var dimOrder=['usage','context','tools','automation','scale'];
+var det=L.details||{};
+
+// Build layout: left radar (40%) + right details (60%)
+var html='<div style="display:flex;gap:20px;flex-wrap:wrap">';
+
+// Left: title + radar + progress
+html+='<div style="flex:0 0 38%;min-width:260px">';
+html+='<div style="font-size:16px;color:#e6edf3;font-weight:700;margin-bottom:4px">'+L.icon+' Lv.'+L.lvl+' '+name+'</div>';
+html+='<div style="color:#8b949e;font-size:12px;margin-bottom:12px">'+L.score+' / '+L.max_score+(zh?' 分':' pts')+'</div>';
+html+='<div id="radarChart" style="width:100%;height:220px"></div>';
+// XP progress bar to next level
+var progress=L.next_threshold>L.cur_threshold?((L.score-L.cur_threshold)/(L.next_threshold-L.cur_threshold)*100):100;
+html+='<div style="margin-top:8px">';
+html+='<div style="display:flex;justify-content:space-between;font-size:11px;color:#8b949e;margin-bottom:4px">';
+html+='<span>'+L.icon+' Lv.'+L.lvl+'</span>';
+if(L.next_icon)html+='<span>'+L.next_icon+' Lv.'+(L.lvl+1)+' '+nextName+'</span>';
+else html+='<span>MAX</span>';
+html+='</div>';
+html+='<div style="background:#21262d;border-radius:6px;height:10px;overflow:hidden">';
+html+='<div style="background:linear-gradient(90deg,#58d4ab,#58a6ff);height:100%;border-radius:6px;width:'+Math.min(progress,100)+'%"></div>';
+html+='</div>';
+if(L.gap>0)html+='<div style="color:#8b949e;font-size:11px;margin-top:4px;text-align:center">'+(zh?'还差 '+L.gap+' 分升级':''+L.gap+' pts to next level')+'</div>';
+html+='</div>';
+html+='</div>';
+
+// Right: dimension bars + tips
+html+='<div style="flex:1;min-width:280px">';
+html+='<div style="font-size:13px;color:#8b949e;font-weight:500;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px">'+(zh?'五维评分':'Dimension Scores')+'</div>';
+dimOrder.forEach(function(dim){
+var val=det[dim]||0;var pct=val/20*100;
+var barColor=val>=16?'#58d4ab':val>=10?'#58a6ff':val>=6?'#d29922':'#f85149';
+html+='<div style="margin:10px 0">';
+html+='<div style="display:flex;justify-content:space-between;margin-bottom:3px;font-size:12px">';
+html+='<span style="color:#c9d1d9">'+(dimLabels[dim]||dim)+'</span>';
+html+='<span style="color:'+barColor+';font-weight:600">'+val+'/20</span></div>';
+html+='<div style="background:#21262d;border-radius:4px;height:8px;overflow:hidden">';
+html+='<div style="background:'+barColor+';height:100%;border-radius:4px;width:'+pct+'%"></div>';
+html+='</div></div>';});
+
+// Upgrade tips
+if(L.tips&&L.tips.length>0){
+html+='<div style="margin-top:16px;padding:12px;background:#1c2128;border-radius:8px;border:1px solid #30363d">';
+html+='<div style="font-size:12px;color:#d4a04a;font-weight:600;margin-bottom:8px">'+(zh?'💡 升级建议':'💡 Upgrade Tips')+'</div>';
+L.tips.forEach(function(tip){
+html+='<div style="font-size:11px;color:#c9d1d9;margin:6px 0">';
+html+='<span style="color:#8b949e">'+(dimLabels[tip.dim]||tip.dim)+' ('+tip.score+'/'+tip.max+')</span> → ';
+html+=(zh?tip.tip_zh:tip.tip_en);
+html+='</div>';});
+html+='</div>';}
+html+='</div></div>';
+
+$('levelPanel').insertAdjacentHTML('beforeend',html);
+
+// Render radar chart
+var chart=echarts.init($('radarChart'));
+chart.setOption({
+radar:{indicator:dimOrder.map(function(d){return{name:dimLabels[d]||d,max:20};}),
+shape:'polygon',radius:'70%',center:['50%','55%'],
+axisName:{color:'#8b949e',fontSize:10},
+axisLine:{lineStyle:{color:'#30363d'}},splitLine:{lineStyle:{color:'#21262d'}},splitArea:{areaStyle:{color:['transparent','rgba(88,212,171,0.03)']}}},
+series:[{type:'radar',symbol:'circle',symbolSize:6,
+lineStyle:{color:'#58d4ab',width:2},
+areaStyle:{color:'rgba(88,212,171,0.15)'},
+itemStyle:{color:'#58d4ab',borderColor:'#161b22',borderWidth:2},
+data:[{value:dimOrder.map(function(d){return det[d]||0;})}]}]});
+window.addEventListener('resize',function(){chart.resize();});
 })();
 
 window.addEventListener('resize',()=>{document.querySelectorAll('.ch,.cht').forEach(el=>{const c=echarts.getInstanceByDom(el);if(c)c.resize();});});
