@@ -24,7 +24,10 @@
 </p>
 
 <p align="center">
-  <img src=".github/screenshot-dashboard.png" width="800" alt="Dashboard" />
+  <img src=".github/screenshot-dashboard-top.png" width="800" alt="Dashboard — KPIs, cost trend, model & token breakdown, rate limits" />
+</p>
+<p align="center">
+  <img src=".github/screenshot-dashboard-bottom.png" width="800" alt="Dashboard — activity heatmap, project ranking, machines, daily details" />
 </p>
 
 ## Quick Install
