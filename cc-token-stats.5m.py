@@ -1621,14 +1621,14 @@ var streak=0;for(var i=dates.length-1;i>=0;i--){if(i===dates.length-1||(new Date
 var codeLines=Math.round(D.total.out/15);
 var codeLinesStr=codeLines>=10000?(codeLines/1000).toFixed(0)+'K':codeLines.toLocaleString();
 var totalMsgs=Object.values(daily).reduce(function(a,d){return a+d.msgs;},0);
-var html='<div style="font-size:13px;color:#8b949e;font-weight:500;text-transform:uppercase;letter-spacing:.5px;margin-bottom:14px">'+(zh?'\u4f7f\u7528\u62a5\u544a':'Usage Insights')+'</div>';
-function row(icon,text){return '<div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid #21262d"><span style="font-size:15px;width:24px;text-align:center;flex-shrink:0">'+icon+'</span><span style="font-size:12px;color:#8b949e;line-height:1.5">'+text+'</span></div>';}
-html+=row('\u23f1',zh?'\u6700\u6d3b\u8dc3\u65f6\u6bb5 <b style="color:#e6edf3">'+peakH+':00</b>':'Peak hour <b style="color:#e6edf3">'+peakH+':00</b>');
-html+=row('\u2728',zh?'\u6700\u70e7\u94b1 <b style="color:#e6edf3">'+maxDay.slice(5)+'</b> ('+fc(maxCost)+')':'Biggest day <b style="color:#e6edf3">'+maxDay.slice(5)+'</b> ('+fc(maxCost)+')');
-html+=row('\u25b6',zh?'\u6700\u8017\u9879\u76ee <b style="color:#e6edf3">'+topProj+'</b>':'Top project <b style="color:#e6edf3">'+topProj+'</b>');
-html+=row('\u2693',zh?'\u8fde\u7eed\u4f7f\u7528 <b style="color:#e6edf3">'+streak+' \u5929</b>':'Streak <b style="color:#e6edf3">'+streak+' days</b>');
-html+=row('\u270e',zh?'\u751f\u6210\u7ea6 <b style="color:#e6edf3">'+codeLinesStr+'</b> \u884c\u4ee3\u7801':'~<b style="color:#e6edf3">'+codeLinesStr+'</b> lines generated');
-html+=row('\u2261',zh?'\u5171 <b style="color:#e6edf3">'+totalMsgs.toLocaleString()+'</b> \u6761\u6d88\u606f':'<b style="color:#e6edf3">'+totalMsgs.toLocaleString()+'</b> messages');
+var html='<div style="font-size:13px;color:#8b949e;font-weight:500;text-transform:uppercase;letter-spacing:.5px;margin-bottom:16px">'+(zh?'\u4f7f\u7528\u62a5\u544a':'Usage Insights')+'</div>';
+function wRow(label,value,color){return '<div style="display:flex;justify-content:space-between;align-items:baseline;padding:10px 0;border-bottom:1px solid #21262d"><span style="font-size:12px;color:#8b949e">'+label+'</span><span style="font-size:15px;font-weight:700;color:'+color+'">'+value+'</span></div>';}
+html+=wRow(zh?'\u6700\u6d3b\u8dc3\u65f6\u6bb5':'Peak hour',peakH+':00','#58a6ff');
+html+=wRow(zh?'\u6700\u70e7\u94b1\u7684\u4e00\u5929':'Biggest day',maxDay.slice(5)+' ('+fc(maxCost)+')','#f85149');
+html+=wRow(zh?'\u6700\u8017 Token \u9879\u76ee':'Top project',topProj,'#d4a04a');
+html+=wRow(zh?'\u8fde\u7eed\u4f7f\u7528':'Streak',streak+(zh?' \u5929':' days'),'#f0883e');
+html+=wRow(zh?'\u751f\u6210\u4ee3\u7801':'Code generated','~'+codeLinesStr+(zh?' \u884c':' lines'),'#a371f7');
+html+=wRow(zh?'\u603b\u6d88\u606f\u6570':'Messages',totalMsgs.toLocaleString(),'#3fb950');
 $('wrappedPanel').insertAdjacentHTML('beforeend',html);
 })();
 
@@ -1666,33 +1666,33 @@ for(var d in sbd){sbd[d].forEach(function(s){if(s.msgs>maxSessMsgs)maxSessMsgs=s
 var maxDayCost=0;dates.forEach(function(d){if(daily[d].cost>maxDayCost)maxDayCost=daily[d].cost;});
 var streak=0;for(var i=dates.length-1;i>=0;i--){if(i===dates.length-1||(new Date(dates[i+1])-new Date(dates[i]))/(86400000)<=1.5)streak++;else break;}
 var projCount=Object.keys(projects).length;
-// [icon, name_zh, name_en, unlocked]
+// [name_zh, name_en, color, unlocked]
 var badges=[
-['\u2605','\u767e\u5200\u65a9','$100 Club',cost>=100],
-['\u2605\u2605','\u5343\u5200\u65a9','$1K Club',cost>=1000],
-['\u2605\u2605\u2605','\u4e09\u5343\u5200\u65a9','$3K Club',cost>=3000],
-['\u263e','\u591c\u732b\u5b50','Night Owl',lateCount>=50],
-['\u2600','\u5f7b\u591c\u8005','Insomniac',lateCount>=200],
-['\u2666','\u4fe1\u5f92','Opus Fan',opusPct>=90],
-['\u21e5','\u4e00\u955c\u5230\u5e95','Marathon',maxSessMsgs>=200],
-['7\u00d7','\u4e03\u65e5\u8fde\u51fb','7d Streak',streak>=7],
-['30\u00d7','\u6708\u5ea6\u8fbe\u4eba','30d Streak',streak>=30],
-['\u229b','\u591a\u680f\u52a8\u7269','Multi-Proj',projCount>=5],
-['\u25b2','\u5927\u624b\u7b14','Big Day',maxDayCost>=200],
-['\u2102','\u767e\u4f1a\u8fbe\u4eba','100 Sess',sessions>=100],
+['\u767e\u5200\u65a9','$100 Club','#3fb950',cost>=100],
+['\u5343\u5200\u65a9','$1K Club','#58a6ff',cost>=1000],
+['\u4e09\u5343\u5200\u65a9','$3K Club','#a371f7',cost>=3000],
+['\u591c\u732b\u5b50','Night Owl','#8b949e',lateCount>=50],
+['\u5f7b\u591c\u8005','Insomniac','#484f58',lateCount>=200],
+['Opus \u4fe1\u5f92','Opus Fan','#a371f7',opusPct>=90],
+['\u4e00\u955c\u5230\u5e95','Marathon','#d29922',maxSessMsgs>=200],
+['\u4e03\u65e5\u8fde\u51fb','7d Streak','#f0883e',streak>=7],
+['\u6708\u5ea6\u8fbe\u4eba','30d Streak','#f85149',streak>=30],
+['\u591a\u680f\u52a8\u7269','Multi-Proj','#58d4ab',projCount>=5],
+['\u5927\u624b\u7b14','Big Day','#d4a04a',maxDayCost>=200],
+['\u767e\u4f1a\u8fbe\u4eba','100 Sess','#3fb950',sessions>=100],
 ];
 var unlocked=badges.filter(function(b){return b[3];});
 var locked=badges.filter(function(b){return !b[3];});
 var html='<div style="font-size:13px;color:#8b949e;font-weight:500;text-transform:uppercase;letter-spacing:.5px;margin-bottom:14px">'+(zh?'\u6210\u5c31\u5fbd\u7ae0':'Achievements')+' <span style="color:#484f58">'+unlocked.length+'/'+badges.length+'</span></div>';
-html+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:8px">';
+html+='<div style="display:flex;flex-wrap:wrap;gap:8px">';
 unlocked.forEach(function(b){
-html+='<div style="background:#1c2128;border:1px solid #58d4ab40;border-radius:10px;padding:12px 6px;text-align:center">';
-html+='<div style="font-size:20px;color:#58d4ab;margin-bottom:4px">'+b[0]+'</div>';
-html+='<div style="font-size:10px;color:#c9d1d9;font-weight:600">'+(zh?b[1]:b[2])+'</div></div>';});
+html+='<div style="background:'+b[2]+'18;border:1px solid '+b[2]+'60;border-radius:20px;padding:6px 14px;display:inline-flex;align-items:center">';
+html+='<span style="width:6px;height:6px;border-radius:50%;background:'+b[2]+';margin-right:8px;flex-shrink:0"></span>';
+html+='<span style="font-size:12px;color:'+b[2]+';font-weight:600">'+(zh?b[0]:b[1])+'</span></div>';});
 locked.forEach(function(b){
-html+='<div style="background:#161b22;border:1px solid #21262d;border-radius:10px;padding:12px 6px;text-align:center;opacity:0.25">';
-html+='<div style="font-size:20px;color:#484f58;margin-bottom:4px">'+b[0]+'</div>';
-html+='<div style="font-size:10px;color:#484f58">'+(zh?b[1]:b[2])+'</div></div>';});
+html+='<div style="background:#21262d40;border:1px solid #21262d;border-radius:20px;padding:6px 14px;display:inline-flex;align-items:center;opacity:0.35">';
+html+='<span style="width:6px;height:6px;border-radius:50%;background:#484f58;margin-right:8px;flex-shrink:0"></span>';
+html+='<span style="font-size:12px;color:#484f58">'+(zh?b[0]:b[1])+'</span></div>';});
 html+='</div>';
 $('badgesPanel').insertAdjacentHTML('beforeend',html);
 })();
