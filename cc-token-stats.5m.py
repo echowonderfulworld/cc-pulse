@@ -10,7 +10,7 @@ cc-token-status — Claude Code usage dashboard in your menu bar.
 https://github.com/jayson-jia-dev/cc-token-status
 """
 
-VERSION = "1.4.1"
+VERSION = "1.4.2"
 REPO_URL = "https://raw.githubusercontent.com/jayson-jia-dev/cc-token-status/main"
 
 import json, os, glob, shlex, socket, subprocess, sys
@@ -252,15 +252,20 @@ def calc_user_level():
                     _candidate_project_dirs.add(os.path.realpath(_p))
 
     # 1. Usage maturity (20pts): median session length + density
+    # msg.id dedup mirrors scan() — session-resume rewrites the same
+    # assistant messages back into the JSONL, which used to inflate
+    # the per-session counter 40-80% on long sessions, pushing users
+    # up the scoring tiers artificially. Global seen set (msg.id is
+    # unique across files in practice) keeps the math honest.
     _sessions = []
     _dates = set()
+    _seen_msgs = set()
     for jf in _g.glob(os.path.join(_cd, "projects/*/*.jsonl")):
         cnt = 0
         try:
             with open(jf) as f:
                 for line in f:
                     d = json.loads(line)
-                    if d.get("type") == "assistant": cnt += 1
                     ts = d.get("timestamp", "")
                     if ts:
                         # Use local-tz date to match scan()'s date semantics.
@@ -272,6 +277,12 @@ def calc_user_level():
                             _dates.add(datetime.fromisoformat(ts.replace("Z","+00:00")).astimezone().strftime("%Y-%m-%d"))
                         except Exception:
                             _dates.add(ts[:10])
+                    if d.get("type") != "assistant": continue
+                    mid = (d.get("message") or {}).get("id")
+                    if mid:
+                        if mid in _seen_msgs: continue
+                        _seen_msgs.add(mid)
+                    cnt += 1
         except Exception: pass
         if cnt > 0: _sessions.append(cnt)
     _sessions.sort()
@@ -931,8 +942,8 @@ def _best_cached(now_ts):
 
 def _file_fingerprints(base):
     """Collect {path: mtime} for all JSONL files at the project root.
-    Mirrors scan()'s glob (NOT recursive) — see scan() for why
-    subagents/ is deliberately excluded to avoid double-counting."""
+    Mirrors scan()'s glob pattern (project root only, no recursion
+    into subagents/) so cache invalidation matches what scan reads."""
     fps = {}
     if not os.path.isdir(base):
         return fps
@@ -1192,8 +1203,12 @@ def save_sync(st):
     try:
         os.makedirs(d, exist_ok=True)
         mb = {m: {**v, "cost": round(v["cost"], 2)} for m, v in st.get("models", {}).items()}
-        # Daily: {date: {cost, msgs, tokens}}
-        daily = {k: {"cost": round(v["cost"], 2), "msgs": v["msgs"], "tokens": v["tokens"]}
+        # Daily: {date: {cost, msgs, tokens, sessions}}
+        # sessions is per-day session count (scan() records this at first
+        # message of each session). Prior versions dropped it on save, so
+        # remote per-day session counts were lost from fleet views.
+        daily = {k: {"cost": round(v.get("cost", 0), 2), "msgs": v.get("msgs", 0),
+                     "tokens": v.get("tokens", 0), "sessions": v.get("sessions", 0)}
                  for k, v in st.get("daily", {}).items() if v.get("cost", 0) > 0 or v.get("msgs", 0) > 0}
         # Hourly: {hour: count}
         hourly = {str(k): v for k, v in st.get("hourly", {}).items() if v > 0}
@@ -1240,43 +1255,30 @@ def save_sync(st):
             }, f, indent=2)
     except Exception: pass
 
-def recalc_remote_cost(data):
-    """Recalculate remote machine cost using current pricing (not cached total_cost)."""
-    total = 0.0
-    mb = data.get("model_breakdown", {})
-    inp = data.get("input_tokens", 0)
-    out = data.get("output_tokens", 0)
-    cw = data.get("cache_write_tokens", 0)
-    cr = data.get("cache_read_tokens", 0)
-    # Sum tokens across model_breakdown entries. If mb exists but every
-    # entry lacks the 'tokens' field (old/corrupt remote schema), the
-    # ratio method silently produces $0 for all models — so detect that
-    # case and fall through to the flat sonnet fallback below.
-    sum_tokens = sum(v.get("tokens", 0) for v in mb.values()) if mb else 0
-    if mb and sum_tokens > 0:
-        # Has per-model breakdown — use token ratio (not msg ratio, since
-        # Opus messages have far more tokens per msg than Haiku)
-        for model, mdata in mb.items():
-            ratio = mdata.get("tokens", 0) / sum_tokens
-            p = PRICING.get(tier(model), PRICING["sonnet"])
-            # Remote JSON only carries the aggregated cache_write_tokens, so
-            # we can't split 5m vs 1h TTL here. Use 1h as the conservative
-            # default — matches Claude Code's empirical behavior.
-            model_cost = (inp * ratio * p["input"] + out * ratio * p["output"] +
-                          cw * ratio * p["cache_write_1h"] + cr * ratio * p["cache_read"]) / 1e6
-            total += model_cost
-            mdata["cost"] = round(model_cost, 2)
-    else:
-        # Fallback: assume sonnet pricing.
-        # Triggers when: no model_breakdown, OR mb exists but all entries
-        # have tokens=0 (pre-v3 remote data written before per-model
-        # token tracking landed).
-        p = PRICING["sonnet"]
-        total = (inp * p["input"] + out * p["output"] + cw * p["cache_write_1h"] + cr * p["cache_read"]) / 1e6
-    data["total_cost"] = round(total, 2)
-    return data
-
 def load_remotes():
+    """Load remote machines' stats from iCloud, trusting whatever they wrote.
+
+    Up through v1.4.1 this ran recalc_remote_cost() to re-price remote data
+    against current PRICING. That introduced two problems:
+
+      1. Only total_cost was recalculated; per-day daily.cost kept the
+         write-time pricing → header vs Daily合计 diverged by ~0.2%.
+      2. The recalc distributed aggregated tokens by per-model token
+         ratio (approximation), losing the exactness of home-mac's
+         per-message computation.
+
+    Dropping recalc entirely because auto_update guarantees every active
+    machine runs the same version within 24h of a release, so per-machine
+    cost writes are already current. The rare case of a stale remote
+    running pre-v1.4.0 (buggy no-dedup scan) resolves itself as soon as
+    that machine refreshes — worst case it shows slightly high for a day,
+    far better than a permanent $4 gap everywhere.
+
+    If pricing changes in the future and cross-machine precision matters
+    before all machines refresh, the right fix is to recompute per-day
+    per-model cost from the saved daily_models token breakdown — not
+    the aggregate approximation we had.
+    """
     remotes = []
     if not SYNC_DIR: return remotes
     md = os.path.join(SYNC_DIR, "machines")
@@ -1287,12 +1289,19 @@ def load_remotes():
         if os.path.isfile(sf):
             try:
                 with open(sf) as f:
-                    data = recalc_remote_cost(json.load(f))
-                # Normalize field names to match local scan() output
-                data["cost"] = data.get("total_cost", 0)
+                    data = json.load(f)
+                # Normalize to scan()'s shape so merge and menu code
+                # can read every machine the same way. Both local scan
+                # and written sync file carry the same numbers — just
+                # under different field names.
+                data["cost"]     = data.get("total_cost", 0)
                 data["sessions"] = data.get("session_count", 0)
-                data["d_min"] = data.get("date_range", {}).get("min")
-                data["d_max"] = data.get("date_range", {}).get("max")
+                data["inp"]      = data.get("input_tokens", 0)
+                data["out"]      = data.get("output_tokens", 0)
+                data["cw"]       = data.get("cache_write_tokens", 0)
+                data["cr"]       = data.get("cache_read_tokens", 0)
+                data["d_min"]    = (data.get("date_range") or {}).get("min")
+                data["d_max"]    = (data.get("date_range") or {}).get("max")
                 data.setdefault("models", data.get("model_breakdown", {}))
                 data.setdefault("daily", {})
                 data.setdefault("hourly", {})
@@ -1377,13 +1386,17 @@ def _merge_machines_data(machines):
             today["models"][name]["msgs"] += d.get("msgs", 0)
             today["models"][name]["cost"] += d.get("cost", 0)
 
-        # daily
+        # daily (including per-day sessions so menu/dashboard can show
+        # fleet session counts when S-2 remotes are synced; older remotes
+        # that didn't write sessions just contribute 0 and the field stays
+        # correct for local).
         for date, v in (m.get("daily") or {}).items():
             if date not in daily:
-                daily[date] = {"cost": 0.0, "msgs": 0, "tokens": 0}
-            daily[date]["cost"] += v.get("cost", 0)
-            daily[date]["msgs"] += v.get("msgs", 0)
-            daily[date]["tokens"] += v.get("tokens", 0)
+                daily[date] = {"cost": 0.0, "msgs": 0, "tokens": 0, "sessions": 0}
+            daily[date]["cost"]     += v.get("cost", 0)
+            daily[date]["msgs"]     += v.get("msgs", 0)
+            daily[date]["tokens"]   += v.get("tokens", 0)
+            daily[date]["sessions"] += v.get("sessions", 0)
 
         # hourly (coerce key to int so menu and dashboard use the same space)
         for h, cnt in (m.get("hourly") or {}).items():
@@ -1434,11 +1447,12 @@ def generate_dashboard():
         model_display[short] = round(v["cost"], 2)
         model_msgs[short] = v["msgs"]
 
-    # Token composition
-    total_inp = sum(m.get("inp", 0) + m.get("input_tokens", 0) for m in machines)
-    total_out = sum(m.get("out", 0) + m.get("output_tokens", 0) for m in machines)
-    total_cw = sum(m.get("cw", 0) + m.get("cache_write_tokens", 0) for m in machines)
-    total_cr = sum(m.get("cr", 0) + m.get("cache_read_tokens", 0) for m in machines)
+    # Token composition — load_remotes() now normalizes inp/out/cw/cr
+    # aliases to match scan()'s shape, so a single key per field is enough.
+    total_inp = sum(m.get("inp", 0) for m in machines)
+    total_out = sum(m.get("out", 0) for m in machines)
+    total_cw  = sum(m.get("cw", 0)  for m in machines)
+    total_cr  = sum(m.get("cr", 0)  for m in machines)
     total_tokens = total_inp + total_out + total_cw + total_cr
 
     # Date range across all machines — merge every remote's d_min into dmin_all
@@ -1468,7 +1482,9 @@ def generate_dashboard():
     roi = {}
     if sub > 0 and dmin_all:
         first = datetime.strptime(dmin_all, "%Y-%m-%d")
-        months = max((datetime.now() - first).days / 30.0, 1)
+        # Pro-rated (see main() — same reasoning). 1/30 floor avoids
+        # division-by-zero for brand-new installs on first run.
+        months = max((datetime.now() - first).days / 30.0, 1/30)
         paid = sub * months
         roi = {"sub": sub, "months": round(months, 1), "paid": round(paid, 0),
                "cost": round(tc, 2), "multiplier": round(tc / paid, 1)}
@@ -2488,9 +2504,13 @@ def main():
         prefix = f"{lbl} " if lbl else ""
         if dmin_all:
             first = datetime.strptime(dmin_all, "%Y-%m-%d")
-            months_active = max((datetime.now() - first).days / 30.0, 1)
+            # Pro-rated: users with <30 days of history now see a
+            # proportional "已付" instead of being charged a full month.
+            # The 1/30 floor (≈ half a day) exists only to keep
+            # multiplier from dividing by zero on day-0 first-run.
+            months_active = max((datetime.now() - first).days / 30.0, 1/30)
         else:
-            months_active = 1
+            months_active = 1/30
         total_paid = sub * months_active
         savings = tc - total_paid
         multiplier = tc / total_paid

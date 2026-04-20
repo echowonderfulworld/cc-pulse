@@ -160,5 +160,111 @@ class ScanDedupTest(unittest.TestCase):
             msg=f"flat 1M cw tokens with no TTL split should price at $6 (1h), got ${s['cost']:.4f}")
 
 
+class RemoteLoadConsistencyTest(unittest.TestCase):
+    """Regression tests for v1.4.2 R-1/R-2 fix: load_remotes() no longer
+    recalculates total_cost. daily.cost vs total_cost must stay self-
+    consistent — whatever home-mac wrote is what's loaded."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="cc-remote-test-")
+        self.sync_machines = os.path.join(self.tmp, "machines")
+        self.remote_dir = os.path.join(self.sync_machines, "fake-mac")
+        os.makedirs(self.remote_dir)
+        self.mod = load_plugin()
+        self.mod.SYNC_DIR = self.tmp
+        # Pretend this process is a different machine so load_remotes
+        # actually loads the fake remote (it skips self.MACHINE).
+        self.mod.MACHINE = "THIS-IS-NOT-FAKE-MAC"
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _write_remote(self, **fields):
+        data = {
+            "machine": "fake-mac",
+            "session_count": 10,
+            "input_tokens": 1000, "output_tokens": 500,
+            "cache_write_tokens": 2000, "cache_read_tokens": 5000,
+            "total_cost": 42.00,
+            "date_range": {"min": "2026-04-10", "max": "2026-04-20"},
+            "model_breakdown": {"claude-sonnet-4-6": {"msgs": 10, "tokens": 8500, "cost": 42.00}},
+            "daily": {
+                "2026-04-10": {"cost": 20.00, "msgs": 5, "tokens": 4250, "sessions": 1},
+                "2026-04-20": {"cost": 22.00, "msgs": 5, "tokens": 4250, "sessions": 1},
+            },
+            "hourly": {"14": 10},
+            "projects": {}, "today": {"cost": 0, "msgs": 0, "tokens": 0},
+            "daily_models": {}, "daily_hourly": {}, "sessions_by_day": {},
+        }
+        data.update(fields)
+        with open(os.path.join(self.remote_dir, "token-stats.json"), "w") as f:
+            json.dump(data, f)
+
+    def test_remote_total_cost_not_recalculated(self):
+        # Home-mac's written total_cost must be trusted verbatim.
+        self._write_remote(total_cost=42.00)
+        remotes = self.mod.load_remotes()
+        self.assertEqual(len(remotes), 1)
+        self.assertEqual(remotes[0]["cost"], 42.00)
+
+    def test_remote_daily_sum_matches_total_cost(self):
+        # After load, sum(daily.cost) must equal total_cost — no silent
+        # divergence like the $4.27 gap before v1.4.2.
+        self._write_remote()
+        remotes = self.mod.load_remotes()
+        daily_sum = sum(v.get("cost", 0) for v in remotes[0]["daily"].values())
+        self.assertAlmostEqual(daily_sum, remotes[0]["cost"], places=2)
+
+    def test_remote_fields_normalized_to_scan_shape(self):
+        # load_remotes must expose inp/out/cw/cr (not just the long
+        # input_tokens/etc. names) so merge code doesn't need OR-tricks.
+        self._write_remote()
+        r = self.mod.load_remotes()[0]
+        self.assertEqual(r["inp"], 1000)
+        self.assertEqual(r["out"], 500)
+        self.assertEqual(r["cw"], 2000)
+        self.assertEqual(r["cr"], 5000)
+        self.assertEqual(r["sessions"], 10)
+        self.assertEqual(r["d_min"], "2026-04-10")
+        self.assertEqual(r["d_max"], "2026-04-20")
+
+
+class UserLevelDedupTest(unittest.TestCase):
+    """Regression for v1.4.2 U-1 fix: calc_user_level's median session
+    length must not be inflated by session-resume duplicates."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="cc-level-test-")
+        self.projects = os.path.join(self.tmp, "projects", "testproj")
+        os.makedirs(self.projects)
+        self.jsonl = os.path.join(self.projects, "session.jsonl")
+        self.mod = load_plugin()
+        self.mod.CLAUDE_DIR = self.tmp
+        # Kill level cache so each call recomputes
+        self.mod.LEVEL_CACHE_FILE = Path(self.tmp) / ".level_cache.json"
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_level_uses_deduped_session_length(self):
+        # 5 unique msgs + 50 duplicates → raw cnt = 55 (tier >=50 → 10pt
+        # msg-bucket), dedup cnt = 5 (tier <10 → 0pt msg-bucket).
+        # Density bonus is identical either way, so the whole difference
+        # (10 → 0) comes from dedup.
+        rows = [make_row(f"unique_{i}") for i in range(5)]
+        for i in range(50):
+            rows.append(make_row(f"unique_{i % 5}"))  # duplicates
+        with open(self.jsonl, "w") as f:
+            for r in rows:
+                f.write(r + "\n")
+        score, lvl, details = self.mod.calc_user_level()
+        # With dedup: msg-tier 0 + density bonus (≤4) = usage ≤ 4
+        # Without dedup: msg-tier 10 + density bonus (≤4) = usage ≥ 10
+        self.assertLessEqual(details["usage"], 4,
+            msg=f"dedup'd 5-msg session should score usage ≤4, got {details['usage']}")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
