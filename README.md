@@ -68,9 +68,13 @@ No dependencies to install manually. SwiftBar is auto-installed if missing.
 | **Hourly Activity** | Sparkline charts: `▅▇██▇▄` shows which hours you're most active |
 | **Project Ranking** | Which projects consume the most tokens |
 | **Multi-Machine Sync** | iCloud Drive auto-sync across Macs — zero config |
-| **Usage Alerts** | macOS notifications at 80% and 95% for Session/Weekly/Sonnet/Opus limits |
+| **Usage Alerts** | One macOS push per escalation (80 → 95 → 100 + burn). No re-firing on window rollover or same-tier repeats. Burn is suppressed once already at 100% |
 | **Extra Usage** | Shows extra usage gauge with spent amount, monthly limit, and on/off status when enabled |
-| **Auto-Update** | Daily background check + on-demand "Check for Updates Now" menu button. SHA256-verified, proxy-aware (system HTTP/HTTPS proxy), downgrade-protected, atomic replace, self-heals stray plugin copies on every run |
+| **Session Retention Protection** | Claude Code by default silently deletes `~/.claude/projects/**/*.jsonl` older than 30 days, wiping your cost history. On every refresh we patch `cleanupPeriodDays` to `99999` so your data stays put. [Background](https://simonwillison.net/2025/Oct/22/claude-code-logs/) |
+| **Accurate Cost (msg.id dedup)** | Claude Code re-logs the same API response on session resume/continue. Without dedup, cost inflates 40–80%. Plugin deduplicates globally by `msg.id` so numbers match Anthropic's billing |
+| **Fleet Aggregation** | With iCloud sync, menu's Daily / Hourly / Projects / Models panels aggregate across all your Macs. Only the Machines panel breaks down per-device |
+| **TTL-Aware Cache Pricing** | Reads `usage.cache_creation.ephemeral_{5m,1h}_input_tokens` and prices each TTL at its official rate ($×1.25 for 5m, $×2 for 1h) |
+| **Auto-Update** | Daily background check + on-demand "Manual Update" menu button. SHA256-verified, proxy-aware (system HTTP/HTTPS proxy), downgrade-protected, atomic replace, self-heals stray plugin copies on every run |
 | **5 Languages** | EN, 中文, ES, FR, 日本語 — auto-detected from system |
 | **Dark & Light Mode** | Adapts color scheme to macOS appearance |
 
@@ -97,24 +101,29 @@ Scored across 5 dimensions (100 points total):
 ## How It Works
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  SwiftBar (5-min refresh)                                   │
-│   ↓                                                         │
-│  cc-token-stats.5m.py                                       │
-│   ├─ scan()        → parse ~/.claude/projects/*/*.jsonl     │
-│   │                  (msg.id dedup + mtime fingerprint cache)│
-│   ├─ get_usage()   → Anthropic OAuth API (4-min cache)      │
-│   │                  ↳ macOS Keychain → OAuth token          │
-│   ├─ save_sync()   → write to iCloud Drive                  │
-│   ├─ auto_update() → GitHub + SHA256 (24h throttle)         │
-│   └─ check_and_notify() → macOS notifications               │
-└─────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│  SwiftBar (5-min refresh)                                        │
+│   ↓                                                              │
+│  cc-token-stats.5m.py                                            │
+│   ├─ ensure_cleanup_disabled() → patch cleanupPeriodDays → 99999 │
+│   ├─ scan()        → parse ~/.claude/projects/*/*.jsonl          │
+│   │                  (msg.id dedup + TTL-aware pricing           │
+│   │                   + incremental mtime fingerprint cache)     │
+│   ├─ get_usage()   → Anthropic OAuth API (9-min fresh, 2h stale) │
+│   │                  ↳ macOS Keychain → OAuth token              │
+│   ├─ save_sync()   → write full state to iCloud Drive            │
+│   ├─ load_remotes()→ trust other machines' written values        │
+│   ├─ auto_update() → GitHub + SHA256 (24h throttle)              │
+│   └─ check_and_notify() → one push per escalation, no spam       │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
-- **Token & cost** — scans Claude Code JSONL session logs with incremental caching (only re-parses changed files), deduplicates by Anthropic `msg.id` so session resume/continue rewrites aren't double-counted, calculates API-equivalent cost with official Anthropic pricing
-- **Plan limits** — reads OAuth token from macOS Keychain, queries `api.anthropic.com/api/oauth/usage` with smart caching (4-min fresh + 2-hour stale fallback, HTTP 429 graceful degradation)
+- **Session retention protection** — before anything else, patches `~/.claude/settings.json` so Claude Code's 30-day default auto-deletion can't wipe your cost history
+- **Token & cost** — scans Claude Code JSONL session logs with incremental caching (only re-parses changed files), globally deduplicates by Anthropic `msg.id` so session resume/continue rewrites are counted once, splits cache-write pricing by TTL (`ephemeral_5m` × 1.25 vs `ephemeral_1h` × 2 of input rate)
+- **Plan limits** — reads OAuth token from macOS Keychain, queries `api.anthropic.com/api/oauth/usage` with smart caching (9-min fresh + 2-hour stale fallback, HTTP 429 graceful degradation)
+- **Rate-limit alerts** — one notification per escalation per limit-type; `state = {limit_key: {tier, at}}` survives 5h/7d window rollovers so the same threshold doesn't re-fire. Burn-rate prediction suppressed once already blocked
 - **Auto-update** — daily GitHub check with SHA256 verification, atomic tmp+rename, system proxy fallback, downgrade-protected; failures logged to `~/.config/cc-token-stats/.update.log` for diagnosis
-- **Multi-machine sync** — writes stats to iCloud Drive, reads other machines' data automatically
+- **Multi-machine sync** — writes full stats (including `daily_models`, `daily_hourly`, `sessions_by_day`) to iCloud Drive; reads peers' written values as-is (no re-pricing approximation) so header and Daily合计 stay exactly consistent
 - **Dashboard** — generates self-contained HTML with embedded ECharts, opens in browser (12 panels, all data from local caches)
 - **Refresh** — SwiftBar executes the plugin every 5 minutes
 
