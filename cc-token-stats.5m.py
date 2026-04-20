@@ -10,7 +10,7 @@ cc-token-status — Claude Code usage dashboard in your menu bar.
 https://github.com/jayson-jia-dev/cc-token-status
 """
 
-VERSION = "1.3.5"
+VERSION = "1.3.6"
 REPO_URL = "https://raw.githubusercontent.com/jayson-jia-dev/cc-token-status/main"
 
 import json, os, glob, shlex, socket, subprocess, sys
@@ -212,8 +212,29 @@ def calc_user_level():
 
     import glob as _g
     _home = os.path.expanduser("~")
-    _cd = os.path.join(_home, ".claude")
+    _cd = CLAUDE_DIR  # respect CFG['claude_dir'], not a hardcoded ~/.claude
     details = {}
+
+    # Enumerate candidate project directories from Claude Code's own index.
+    # Project keys are the absolute path with '/' → '-'. Decoding is lossy
+    # for paths containing literal '-' (best-effort guess). We combine the
+    # decoded set with glob fallbacks over common project-root conventions
+    # so the scoring works regardless of where the user keeps their code.
+    _candidate_project_dirs = set()
+    _projects_idx = os.path.join(_cd, "projects")
+    if os.path.isdir(_projects_idx):
+        for _pk in os.listdir(_projects_idx):
+            if not _pk.startswith("-"): continue
+            _guess = "/" + _pk.lstrip("-").replace("-", "/")
+            if os.path.isdir(_guess):
+                _candidate_project_dirs.add(os.path.realpath(_guess))
+    for _root_name in ("Downloads", "Projects", "Documents", "code", "dev", "src", "Work", "workspace"):
+        _root = os.path.join(_home, _root_name)
+        if not os.path.isdir(_root): continue
+        for _depth_pat in ("*", "*/*"):
+            for _p in _g.glob(os.path.join(_root, _depth_pat)):
+                if os.path.isdir(_p):
+                    _candidate_project_dirs.add(os.path.realpath(_p))
 
     # 1. Usage maturity (20pts): median session length + density
     _sessions = []
@@ -230,7 +251,14 @@ def calc_user_level():
         except Exception: pass
         if cnt > 0: _sessions.append(cnt)
     _sessions.sort()
-    med = _sessions[len(_sessions)//2] if _sessions else 0
+    # True median (mean of middle two for even counts), not upper-median
+    _n = len(_sessions)
+    if _n == 0:
+        med = 0
+    elif _n % 2:
+        med = _sessions[_n // 2]
+    else:
+        med = (_sessions[_n // 2 - 1] + _sessions[_n // 2]) / 2
     _ad = len(_dates)
     if _dates:
         _fd, _ld = min(_dates), max(_dates)
@@ -248,10 +276,22 @@ def calc_user_level():
     _cm = os.path.join(_cd, "CLAUDE.md")
     if os.path.isfile(_cm):
         with open(_cm) as _f: s2 += 4 if len(_f.readlines()) > 50 else 2
-    _pcm = _g.glob(os.path.join(_home, "Downloads/*/CLAUDE.md"))
-    s2 += 4 if len(_pcm) >= 3 else 2 if len(_pcm) >= 1 else 0
-    _md = os.path.join(_cd, "projects/-Users-" + os.path.basename(_home), "memory")
-    _mf = [f for f in _g.glob(os.path.join(_md, "*.md")) if "MEMORY.md" not in f] if os.path.isdir(_md) else []
+    # Project-level CLAUDE.md — count across all candidate project dirs
+    _pcm_count = sum(1 for _p in _candidate_project_dirs
+                     if os.path.isfile(os.path.join(_p, "CLAUDE.md")))
+    s2 += 4 if _pcm_count >= 3 else 2 if _pcm_count >= 1 else 0
+    # Memory files — scan EVERY project's memory dir, not just the one
+    # derived from ~/.claude/projects/-Users-<basename>. Users who open
+    # Claude Code from subdirs end up with memory scattered under many
+    # project keys; old code only looked at one.
+    _mf = []
+    if os.path.isdir(_projects_idx):
+        for _pk in os.listdir(_projects_idx):
+            _pmem = os.path.join(_projects_idx, _pk, "memory")
+            if not os.path.isdir(_pmem): continue
+            for _f in _g.glob(os.path.join(_pmem, "*.md")):
+                if "MEMORY.md" not in os.path.basename(_f):
+                    _mf.append(_f)
     _sm = [f for f in _mf if os.path.getsize(f) > 200]
     _mr = any((datetime.now().timestamp() - os.path.getmtime(f)) < 7*86400 for f in _sm) if _sm else False
     s2 += 4 if len(_sm) >= 5 and _mr else 2 if len(_sm) >= 2 else 0
@@ -319,11 +359,15 @@ def calc_user_level():
             _ps[os.path.basename(pd)] = len(_g.glob(os.path.join(pd, "*.jsonl")))
     _sp = sum(1 for c in _ps.values() if c >= 5)
     s5 += 10 if _sp >= 8 else 7 if _sp >= 5 else 4 if _sp >= 3 else 2 if _sp >= 1 else 0
-    # worktree detection (simplified)
+    # worktree detection — check every candidate project dir, not just
+    # ~/Downloads. Catches users who keep repos under ~/Projects, ~/dev,
+    # or wherever.
     try:
-        _dl = Path(_home) / "Downloads"
-        if any(_dl.glob("*/.git/worktrees")) or any(_dl.glob("*/*/.git/worktrees")):
-            s5 += 4
+        _has_wt = any(
+            os.path.isdir(os.path.join(_p, ".git", "worktrees"))
+            for _p in _candidate_project_dirs
+        )
+        if _has_wt: s5 += 4
     except Exception: pass
     s5 += 4 if _td >= 90 else 3 if _td >= 60 else 2 if _td >= 30 else 1 if _td >= 14 else 0
     s5 = min(s5, 20)
