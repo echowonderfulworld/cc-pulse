@@ -122,7 +122,7 @@ Scored across 5 dimensions (100 points total):
 
 | Model | Input | Output | Cache Write (1h) | Cache Read |
 |-------|-------|--------|-----------------|------------|
-| Opus 4.5 / 4.6 | $5 | $25 | $10 | $0.50 |
+| Opus 4.5 / 4.6 / 4.7 | $5 | $25 | $10 | $0.50 |
 | Sonnet 4.5 / 4.6 | $3 | $15 | $6 | $0.30 |
 | Haiku 4.5 | $1 | $5 | $2 | $0.10 |
 
