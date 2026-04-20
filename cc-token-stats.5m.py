@@ -10,7 +10,7 @@ cc-token-status — Claude Code usage dashboard in your menu bar.
 https://github.com/jayson-jia-dev/cc-token-status
 """
 
-VERSION = "1.3.0.3"
+VERSION = "1.3.0.4"
 REPO_URL = "https://raw.githubusercontent.com/jayson-jia-dev/cc-token-status/main"
 
 import json, os, glob, shlex, socket, subprocess, sys
@@ -1776,7 +1776,36 @@ else:
     BAR  = "color=#1A5C4C size=12 font=Menlo"     # rich dark teal — bar charts
     WARN = "color=#B86E1A size=12"                 # dark amber — warnings
 
+def cleanup_duplicate_plugins():
+    """Remove stray copies of this plugin in SwiftBar's plugin dir.
+    SwiftBar treats any executable whose name contains a refresh-interval
+    pattern (e.g. .5m.) as a plugin — so 'cc-token-stats.5m.py.bak.*' gets
+    loaded as a second instance, producing a duplicate menu-bar icon.
+    Self-heal by deleting anything matching cc-token-stats.5m.py.* that
+    isn't this running script."""
+    try:
+        self_path = os.path.realpath(__file__)
+        plugin_dir = os.path.dirname(self_path)
+        if os.path.basename(plugin_dir) != "plugins":
+            return  # Only clean when we're actually running from SwiftBar's dir
+        prefix = "cc-token-stats.5m.py"
+        for name in os.listdir(plugin_dir):
+            if name == prefix:
+                continue
+            if not name.startswith(prefix + "."):
+                continue
+            path = os.path.join(plugin_dir, name)
+            if os.path.realpath(path) == self_path:
+                continue  # Never delete ourselves
+            try:
+                os.remove(path)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
 def main():
+    cleanup_duplicate_plugins()
     auto_update()
     local = scan()
     save_sync(local)
