@@ -10,7 +10,7 @@ cc-token-status — Claude Code usage dashboard in your menu bar.
 https://github.com/jayson-jia-dev/cc-token-status
 """
 
-VERSION = "1.5.5"
+VERSION = "1.5.6"
 REPO_URL = "https://raw.githubusercontent.com/jayson-jia-dev/cc-token-status/main"
 
 import json, os, glob, shlex, socket, subprocess, sys
@@ -1717,6 +1717,7 @@ h3{font-size:12px;color:#8b949e;font-weight:500;margin-bottom:10px;text-transfor
 .empty{color:#484f58;text-align:center;padding-top:80px;font-size:13px}
 @media(max-width:900px){.grid{grid-template-columns:repeat(6,1fr)}.s2{grid-column:span 3}.s8,.s6,.s4{grid-column:span 6}}
 @media(max-width:600px){.grid{grid-template-columns:1fr;padding:12px}[class*="s"]{grid-column:span 1}}
+.bg{position:relative;cursor:default}.tip{display:none;position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:8px 10px;font-size:11px;color:#e6edf3;white-space:normal;min-width:140px;max-width:220px;z-index:100;box-shadow:0 4px 12px rgba(0,0,0,0.5);pointer-events:none;text-align:center;line-height:1.4}.tip::after{content:"";position:absolute;top:100%;left:50%;margin-left:-6px;border:6px solid transparent;border-top-color:#30363d}.bg:hover .tip{display:block}
 </style></head><body>
 <div class="header"><h1 id="T"></h1><span class="meta" id="G"></span></div>
 <div class="grid">
@@ -2182,22 +2183,52 @@ var badges=[
 ['marathon1k','\u2694\ufe0f','\u5343\u56de\u5408\u6218\u58eb','Millennium Marathon',maxSessMsgs>=1000],
 ['streak90','\ud83c\udf38','\u5b63\u5ea6\u8fde\u51fb','90-Day Streak',streak>=90],
 ];
+var descs={
+cost100:['\u7d2f\u8ba1\u82b1\u8d39\u8fbe\u5230 $100','Cumulative cost reaches $100'],
+cost1k:['\u7d2f\u8ba1\u82b1\u8d39\u8fbe\u5230 $1,000','Cumulative cost reaches $1,000'],
+cost3k:['\u7d2f\u8ba1\u82b1\u8d39\u8fbe\u5230 $3,000','Cumulative cost reaches $3,000'],
+cost5k:['\u7d2f\u8ba1\u82b1\u8d39\u8fbe\u5230 $5,000','Cumulative cost reaches $5,000'],
+cost10k:['\u7d2f\u8ba1\u82b1\u8d39\u8fbe\u5230 $10,000','Cumulative cost reaches $10,000'],
+cost100k:['\u7d2f\u8ba1\u82b1\u8d39\u8fbe\u5230 $100,000','Cumulative cost reaches $100,000'],
+night:['\u51cc\u6668 0-4 \u70b9\u53d1\u9001\u6d88\u606f \u2265 50 \u6761','50+ messages between midnight and 4am'],
+night100:['\u51cc\u6668 0-4 \u70b9\u53d1\u9001\u6d88\u606f \u2265 200 \u6761','200+ messages between midnight and 4am'],
+opus90:['Opus \u6a21\u578b\u82b1\u8d39\u5360\u603b\u6210\u672c \u2265 90%','Opus spend \u2265 90% of total cost'],
+marathon:['\u5355\u6b21\u4f1a\u8bdd\u6d88\u606f\u6570 \u2265 200 \u6761','200+ messages in a single session'],
+streak7:['\u8fde\u7eed 7 \u5929\u4f7f\u7528 Claude Code','7-day consecutive usage streak'],
+streak30:['\u8fde\u7eed 30 \u5929\u4f7f\u7528 Claude Code','30-day consecutive usage streak'],
+multi5:['\u4f7f\u7528\u8fc7 \u2265 5 \u4e2a\u4e0d\u540c\u9879\u76ee','Worked across 5+ distinct projects'],
+bigday:['\u5355\u65e5\u82b1\u8d39 \u2265 $200','$200+ spent in a single day'],
+sess100:['\u4f1a\u8bdd\u603b\u6570 \u2265 100','100+ sessions total'],
+earlybird:['5-7 \u70b9\u53d1\u9001\u6d88\u606f \u2265 30 \u6761','30+ messages between 5am and 7am'],
+lunchcoder:['12-13 \u70b9\u53d1\u9001\u6d88\u606f \u2265 200 \u6761','200+ messages at lunchtime (noon-1pm)'],
+weekend:['\u5468\u516d\u5468\u65e5\u7d2f\u8ba1\u6d88\u606f \u2265 300 \u6761','300+ messages on Saturdays & Sundays'],
+active30:['\u6709\u8bb0\u5f55\u7684\u6d3b\u8dc3\u5929\u6570 \u2265 30 \u5929','30+ days with any activity recorded'],
+balanced:['\u4f7f\u7528 \u2265 3 \u4e2a\u6a21\u578b\u4e14\u6700\u5927\u4e00\u4e2a\u5360\u6bd4 \u2264 60%','\u2265 3 models used, largest \u2264 60% of spend'],
+cache_king:['\u7f13\u5b58\u8bfb\u53d6 / \u603b token \u2265 90%','Cache reads \u2265 90% of total tokens'],
+token1b:['\u7d2f\u8ba1 token \u8fbe\u5230 10 \u4ebf','1 billion tokens used total'],
+multi10:['\u4f7f\u7528\u8fc7 \u2265 10 \u4e2a\u4e0d\u540c\u9879\u76ee','Worked across 10+ distinct projects'],
+marathon1k:['\u5355\u6b21\u4f1a\u8bdd\u6d88\u606f\u6570 \u2265 1000 \u6761','1,000+ messages in a single session'],
+streak90:['\u8fde\u7eed 90 \u5929\u4f7f\u7528 Claude Code','90-day consecutive usage streak']};
+function tipFor(id){var d=descs[id];return d?(zh?d[0]:d[1]):'';}
 var unlocked=badges.filter(function(b){return b[4];});
 var locked=badges.filter(function(b){return !b[4];});
 if(unlocked.length===0&&locked.length===0){$('cardBadges').style.display='none';return;}
-var html='<div style="font-size:14px;color:#e6edf3;font-weight:700;margin-bottom:14px">'+(zh?'\ud83c\udfc6 \u6210\u5c31\u5fbd\u7ae0 ('+unlocked.length+'/'+badges.length+')':'🏆 Achievements ('+unlocked.length+'/'+badges.length+')')+'</div>';
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+var html='<div style="font-size:14px;color:#e6edf3;font-weight:700;margin-bottom:14px">'+(zh?'\ud83c\udfc6 \u6210\u5c31\u5fbd\u7ae0 ('+unlocked.length+'/'+badges.length+')':'\ud83c\udfc6 Achievements ('+unlocked.length+'/'+badges.length+')')+'</div>';
 html+='<div style="display:flex;flex-wrap:wrap;gap:10px">';
 unlocked.forEach(function(b){
-html+='<div style="background:#1c2128;border:1px solid #30363d;border-radius:10px;padding:10px 14px;text-align:center;min-width:90px">';
+html+='<div class="bg" style="background:#1c2128;border:1px solid #30363d;border-radius:10px;padding:10px 14px;text-align:center;min-width:90px">';
 html+='<div style="font-size:24px">'+b[1]+'</div>';
-html+='<div style="font-size:10px;color:#58d4ab;margin-top:2px;font-weight:600">'+(zh?b[2]:b[3])+'</div></div>';});
+html+='<div style="font-size:10px;color:#58d4ab;margin-top:2px;font-weight:600">'+esc(zh?b[2]:b[3])+'</div>';
+html+='<div class="tip"><div style="font-weight:600;color:#58d4ab;margin-bottom:4px">'+esc(zh?b[2]:b[3])+'</div>'+esc(tipFor(b[0]))+'</div></div>';});
 locked.forEach(function(b){
 // container stays at full opacity so the label text keeps enough contrast
 // to be legible; the 'not yet unlocked' feel comes from the grayscale/half-
 // opacity icon + dimmer label color instead of fading the whole card
-html+='<div style="background:#161b22;border:1px solid #21262d;border-radius:10px;padding:10px 14px;text-align:center;min-width:90px">';
+html+='<div class="bg" style="background:#161b22;border:1px solid #21262d;border-radius:10px;padding:10px 14px;text-align:center;min-width:90px">';
 html+='<div style="font-size:24px;filter:grayscale(1);opacity:0.5">'+b[1]+'</div>';
-html+='<div style="font-size:10px;color:#8b949e;margin-top:2px">'+(zh?b[2]:b[3])+'</div></div>';});
+html+='<div style="font-size:10px;color:#8b949e;margin-top:2px">'+esc(zh?b[2]:b[3])+'</div>';
+html+='<div class="tip"><div style="font-weight:600;color:#8b949e;margin-bottom:4px">'+esc(zh?b[2]:b[3])+'</div>'+esc(tipFor(b[0]))+'</div></div>';});
 html+='</div>';
 $('badgesPanel').insertAdjacentHTML('beforeend',html);
 })();
@@ -2873,7 +2904,12 @@ def main():
         for k, label in dim_names.items():
             v = _det.get(k, 0)
             b = bar(v, 20, 5)
-            print(f"--{label:<10} {b} {v:>2}/20 | {ROW2}")
+            # Pad by visual display width — f-string '<10' ASCII-pads, but
+            # CJK chars occupy 2 cols in a monospace font, so '使用深度'
+            # (w=8) and '上下文' (w=6) produced a ragged column between
+            # the label and the bar. dw() gives the true visual width.
+            pad = " " * max(10 - dw(label), 1)
+            print(f"--{label}{pad}{b} {v:>2}/20 | {ROW2}")
 
         if _next_threshold:
             _gap = _next_threshold - _score
