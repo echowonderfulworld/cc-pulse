@@ -10,7 +10,7 @@ cc-token-status — Claude Code usage dashboard in your menu bar.
 https://github.com/jayson-jia-dev/cc-token-status
 """
 
-VERSION = "1.5.2"
+VERSION = "1.5.3"
 REPO_URL = "https://raw.githubusercontent.com/jayson-jia-dev/cc-token-status/main"
 
 import json, os, glob, shlex, socket, subprocess, sys
@@ -2143,6 +2143,9 @@ var badges=[
 ['cost100','\ud83d\udcb0','\u767e\u5200\u65a9','$100 Club',cost>=100],
 ['cost1k','\ud83d\udcb5','\u5343\u5200\u65a9','$1K Club',cost>=1000],
 ['cost3k','\ud83d\udc8e','\u4e09\u5343\u5200\u65a9','$3K Club',cost>=3000],
+['cost5k','\ud83d\udcb8','\u4e94\u5343\u5200\u65a9','$5K Club',cost>=5000],
+['cost10k','\ud83d\udc51','\u4e00\u4e07\u5200\u65a9','$10K Club',cost>=10000],
+['cost100k','\ud83d\ude80','\u5341\u4e07\u5200\u65a9','$100K Club',cost>=100000],
 ['night','\ud83c\udf19','\u591c\u732b\u5b50','Night Owl',lateCount>=50],
 ['night100','\ud83e\udddb','\u5f7b\u591c\u8005','Vampire Coder',lateCount>=200],
 ['opus90','\ud83d\udc9c','Opus \u4fe1\u5f92','Opus Devotee',opusPct>=90],
