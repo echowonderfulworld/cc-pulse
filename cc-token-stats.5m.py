@@ -10,7 +10,7 @@ cc-token-status — Claude Code usage dashboard in your menu bar.
 https://github.com/jayson-jia-dev/cc-token-status
 """
 
-VERSION = "1.5.4"
+VERSION = "1.5.5"
 REPO_URL = "https://raw.githubusercontent.com/jayson-jia-dev/cc-token-status/main"
 
 import json, os, glob, shlex, socket, subprocess, sys
@@ -2138,6 +2138,22 @@ var streak=0;for(var i=dates.length-1;i>=0;i--){
 if(i===dates.length-1||(new Date(dates[i+1])-new Date(dates[i]))/(86400000)<=1.5)streak++;else break;}
 // Project count
 var projCount=Object.keys(projects).length;
+// v1.5.5 extra metrics
+// Hour-bucket counts (JSON serializes hour keys as strings)
+var earlyCount=0;for(var h=5;h<=7;h++)earlyCount+=(hourly[String(h)]||0);
+var lunchCount=0;for(var h=12;h<=13;h++)lunchCount+=(hourly[String(h)]||0);
+// Weekend msgs via heatmap {weekday: {hour: count}}, weekday 5=Sat 6=Sun
+var heatmap=D.heatmap||{};var weekendMsgs=0;
+['5','6'].forEach(function(wd){if(heatmap[wd]){for(var h in heatmap[wd])weekendMsgs+=heatmap[wd][h];}});
+// Active days = daily entries with cost > 0
+var activeDays=dates.filter(function(d){return daily[d].cost>0;}).length;
+// Cache hit ratio: cache_read / total tokens
+var totalTokens=D.total.tokens||0;
+var cacheRatio=totalTokens>0?(D.total.cr||0)/totalTokens:0;
+// Model diversity: how balanced is the mix
+var modelCount=Object.keys(models).length;
+var maxModelPct=0;
+for(var mm in models){var p=models[mm]/modelTotal*100;if(p>maxModelPct)maxModelPct=p;}
 // Define badges: [id, icon, name_zh, name_en, condition, unlocked]
 var badges=[
 ['cost100','\ud83d\udcb0','\u767e\u5200\u65a9','$100 Club',cost>=100],
@@ -2155,6 +2171,16 @@ var badges=[
 ['multi5','\ud83d\udc19','\u591a\u680f\u52a8\u7269','Multi-Project',projCount>=5],
 ['bigday','\ud83d\udca5','\u5927\u624b\u7b14','Big Spender Day',maxDayCost>=200],
 ['sess100','\ud83c\udfc5','\u767e\u4f1a\u8fbe\u4eba','100 Sessions',sessions>=100],
+['earlybird','\ud83c\udf05','\u65e9\u8d77\u9e1f','Early Bird',earlyCount>=30],
+['lunchcoder','\ud83e\udd57','\u5348\u9910\u7801\u519c','Lunch Coder',lunchCount>=200],
+['weekend','\ud83c\udfae','\u5468\u672b\u6218\u58eb','Weekend Warrior',weekendMsgs>=300],
+['active30','\ud83d\udcc5','\u6708\u6d3b\u8fbe\u4eba','30 Active Days',activeDays>=30],
+['balanced','\u2696\ufe0f','\u5747\u8861\u5927\u5e08','Balanced Master',modelCount>=3&&maxModelPct<=60],
+['cache_king','\u267b\ufe0f','\u7f13\u5b58\u547d\u4e2d\u738b','Cache Master',cacheRatio>=0.9],
+['token1b','\ud83c\udfb0','\u5341\u4ebf\u4ee4\u724c','Billion Tokens',totalTokens>=1e9],
+['multi10','\ud83c\udfd7\ufe0f','\u9879\u76ee\u5de8\u5320','Ten-Project Master',projCount>=10],
+['marathon1k','\u2694\ufe0f','\u5343\u56de\u5408\u6218\u58eb','Millennium Marathon',maxSessMsgs>=1000],
+['streak90','\ud83c\udf38','\u5b63\u5ea6\u8fde\u51fb','90-Day Streak',streak>=90],
 ];
 var unlocked=badges.filter(function(b){return b[4];});
 var locked=badges.filter(function(b){return !b[4];});
