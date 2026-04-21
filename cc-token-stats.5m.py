@@ -10,7 +10,7 @@ cc-token-status — Claude Code usage dashboard in your menu bar.
 https://github.com/jayson-jia-dev/cc-token-status
 """
 
-VERSION = "1.5.0"
+VERSION = "1.5.1"
 REPO_URL = "https://raw.githubusercontent.com/jayson-jia-dev/cc-token-status/main"
 
 import json, os, glob, shlex, socket, subprocess, sys
@@ -261,7 +261,11 @@ def calc_user_level():
     _sessions = []
     _dates = set()
     _seen_msgs = set()
-    for jf in _g.glob(os.path.join(_cd, "projects/*/*.jsonl")):
+    # Include subagents/ (Task-tool sub-sessions) — same reasoning as scan():
+    # ~50% of assistant usage rows and many entire days live only under
+    # subagents/ on heavy users. Excluding them understated median session
+    # length and active-day density, pushing users down the level ladder.
+    for jf in _g.glob(os.path.join(_cd, "projects/*/**/*.jsonl"), recursive=True):
         cnt = 0
         try:
             with open(jf) as f:
@@ -1021,7 +1025,13 @@ def _file_fingerprints(base):
         return fps
     for pd in glob.glob(os.path.join(base, "*")):
         if not os.path.isdir(pd): continue
-        for jf in glob.glob(os.path.join(pd, "*.jsonl")):
+        # Recurse — subagents/ JSONLs (Task-tool sub-sessions) can contain
+        # usage rows whose msg.id never appears in the project-root JSONL.
+        # Measured on a 2-machine fleet: 8,706 subagent-only msg.ids vs
+        # 6,949 root-only, i.e. root-only scan was undercounting real cost
+        # by ~50%. Fingerprint must mirror scan() exactly or cache invalidation
+        # will miss edits to subagent files.
+        for jf in glob.glob(os.path.join(pd, "**", "*.jsonl"), recursive=True):
             try: fps[jf] = os.path.getmtime(jf)
             except OSError: pass
     return fps
@@ -1132,12 +1142,15 @@ def scan():
         parts = [p for p in proj.replace("-", "/").split("/") if p]
         proj_name = parts[-1] if parts else proj[:20]
 
-        # Scan project root only — subagents/ is excluded for now. With
-        # msg.id dedup (seen_ids below) recursion would be safe in theory
-        # but adds no value on machines without subagent files and hasn't
-        # been validated on machines that have them. Revisit in a follow-up
-        # with empirical cross-file overlap measurement.
-        for jf in glob.glob(os.path.join(pd, "*.jsonl")):
+        # Recurse into subagents/ — measured on a 2-machine fleet: 8,706
+        # msg.ids live ONLY in subagents/ (never in the project root), and
+        # those are real assistant usage rows with cost data. Excluding
+        # subagents undercounted cumulative cost by ~50% on both machines
+        # and silently dropped entire days (e.g. 2026-03-02 had no
+        # project-root JSONL, only a subagents/ file).
+        # msg.id dedup (seen_ids below) is global, so the ~4,917 ids that
+        # appear in BOTH root and subagents/ count exactly once.
+        for jf in glob.glob(os.path.join(pd, "**", "*.jsonl"), recursive=True):
             has = False
             sess_cost = 0.0; sess_msgs = 0; sess_first_date = None; sess_model_counts = {}
             try:

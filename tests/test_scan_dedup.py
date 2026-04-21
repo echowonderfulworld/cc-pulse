@@ -362,5 +362,99 @@ class NotifyDedupTest(unittest.TestCase):
         self.assertIn("🛑", self.pushes[0][0])
 
 
+class SubagentsRecursionTest(unittest.TestCase):
+    """scan() must recurse into projects/<proj>/<session>/subagents/*.jsonl.
+
+    Measurement on the author's 2-machine fleet found 8,706 msg.ids living
+    ONLY in subagents/ files (never in the project root), representing ~50%
+    of real cumulative cost plus entire missing days (e.g. 2026-03-02 had
+    no project-root JSONL at all — only a subagents/agent-acompact-*.jsonl).
+    Root-only scan silently under-reported and made those days unrecoverable
+    since save_sync() overwrites iCloud with the incomplete view.
+
+    These tests lock down the recursion behavior so subagents-only data
+    can never silently vanish again.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="cc-subagents-test-")
+        self.projects = os.path.join(self.tmp, "projects")
+        self.proj_dir = os.path.join(self.projects, "fakeproj")
+        # Typical layout: <proj>/<session-uuid>/subagents/<agent>.jsonl
+        self.session_dir = os.path.join(self.proj_dir, "session-abc")
+        self.sub_dir = os.path.join(self.session_dir, "subagents")
+        os.makedirs(self.sub_dir)
+        self.root_jsonl = os.path.join(self.proj_dir, "main.jsonl")
+        self.sub_jsonl  = os.path.join(self.sub_dir, "agent-xyz.jsonl")
+
+        self.mod = load_plugin()
+        self.mod.CLAUDE_DIR = self.tmp
+        self.mod.SCAN_CACHE_FILE = Path(self.tmp) / ".scan-cache.json"
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _write(self, path, rows):
+        with open(path, "w") as f:
+            for r in rows:
+                f.write(r + "\n")
+
+    def test_subagent_only_ids_counted(self):
+        # Root has one msg, subagent has another — both must contribute.
+        self._write(self.root_jsonl, [make_row("root_msg", inp=1000, out=500)])
+        self._write(self.sub_jsonl,  [make_row("sub_msg",  inp=2000, out=1000)])
+        s = self.mod.scan()
+        self.assertEqual(s["inp"], 3000, "inp should include both root + subagent")
+        self.assertEqual(s["out"], 1500)
+
+    def test_subagent_only_day_recovered(self):
+        # Exactly the regression that motivated this fix: a whole day lives
+        # ONLY in subagents/, so root-only scan produced an empty daily entry
+        # and save_sync() overwrote iCloud with no 2026-03-02 data.
+        self._write(self.root_jsonl, [
+            make_row("r1", ts="2026-04-15T10:00:00Z", inp=1000, out=500),
+        ])
+        self._write(self.sub_jsonl, [
+            make_row("s1", ts="2026-03-02T10:00:00Z", inp=500, out=200),
+        ])
+        s = self.mod.scan()
+        self.assertIn("2026-03-02", s["daily"],
+                      "subagent-only day must appear in daily breakdown")
+        self.assertGreater(s["daily"]["2026-03-02"]["msgs"], 0)
+
+    def test_root_and_subagent_overlap_deduped(self):
+        # Same msg.id in BOTH root and subagent file (happens when a subagent
+        # response gets re-logged into the parent session). Must count once.
+        self._write(self.root_jsonl, [make_row("dup_id", inp=1000, out=500)])
+        self._write(self.sub_jsonl,  [make_row("dup_id", inp=1000, out=500)])
+        s = self.mod.scan()
+        # First-wins: only one row counted
+        self.assertEqual(s["inp"], 1000)
+        self.assertEqual(s["out"], 500)
+
+    def test_subagent_contributes_to_project_totals(self):
+        # Per-project rollup must include subagents so the Top Projects
+        # panel and dashboard reflect real usage per project.
+        self._write(self.root_jsonl, [make_row("r1", inp=1000, out=500)])
+        self._write(self.sub_jsonl,  [make_row("s1", inp=2000, out=1000)])
+        s = self.mod.scan()
+        # Project name comes from the project dir basename ('fakeproj')
+        self.assertIn("fakeproj", s["projects"])
+        p = s["projects"]["fakeproj"]
+        self.assertEqual(p["msgs"], 2, "project msg count spans root + subagent")
+        self.assertEqual(p["tokens"], 1500 + 3000)
+
+    def test_deeply_nested_subagent_picked_up(self):
+        # Claude Code occasionally nests subagents (a subagent spawns another).
+        # Make sure the recursive glob catches any depth.
+        deep = os.path.join(self.sub_dir, "nested", "deeper")
+        os.makedirs(deep)
+        self._write(os.path.join(deep, "x.jsonl"), [make_row("deep_id", inp=500, out=100)])
+        s = self.mod.scan()
+        self.assertGreaterEqual(s["inp"], 500,
+                                "deeply nested JSONL inside subagents/ must be scanned")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
