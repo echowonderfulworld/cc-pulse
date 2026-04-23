@@ -10,7 +10,7 @@ cc-token-status — Claude Code usage dashboard in your menu bar.
 https://github.com/jayson-jia-dev/cc-token-status
 """
 
-VERSION = "1.5.7"
+VERSION = "1.5.8"
 REPO_URL = "https://raw.githubusercontent.com/jayson-jia-dev/cc-token-status/main"
 
 import json, os, glob, shlex, socket, subprocess, sys
@@ -66,7 +66,24 @@ def load_config():
 
 CFG = load_config()
 LANG = CFG["language"]
-MACHINE = socket.gethostname().split(".")[0]
+def _resolve_machine_name():
+    # socket.gethostname() occasionally returns a generic default ("Mac",
+    # "MacBook-Pro", "localhost") on wake-from-sleep / network switch. If
+    # we blindly trust it we end up writing a ghost machines/Mac/ dir that
+    # double-counts the real machine's data (happened 2026-04-23 on RL001).
+    # Fall back to scutil's ComputerName, which is the stable user-set name.
+    h = socket.gethostname().split(".")[0]
+    if h not in {"Mac", "MacBook-Pro", "MacBook", "MacBook-Air", "localhost", ""}:
+        return h
+    try:
+        cn = subprocess.check_output(["scutil", "--get", "ComputerName"],
+                                     text=True, timeout=2, stderr=subprocess.DEVNULL).strip()
+        if cn and cn not in {"Mac", "MacBook-Pro", "MacBook", "MacBook-Air", "localhost"}:
+            return cn.replace(" ", "-")
+    except (subprocess.SubprocessError, OSError): pass
+    return h or "unknown"
+
+MACHINE = _resolve_machine_name()
 
 # ─── i18n: 5 languages (EN, ZH, ES, FR, JA) ───────────────────
 STRINGS = {
