@@ -259,7 +259,7 @@ class UserLevelDedupTest(unittest.TestCase):
         with open(self.jsonl, "w") as f:
             for r in rows:
                 f.write(r + "\n")
-        score, lvl, details = self.mod.calc_user_level()
+        score, lvl, details, _ = self.mod.calc_user_level()
         # With dedup: msg-tier 0 + density bonus (≤4) = usage ≤ 4
         # Without dedup: msg-tier 10 + density bonus (≤4) = usage ≥ 10
         self.assertLessEqual(details["usage"], 4,

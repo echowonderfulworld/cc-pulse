@@ -10,7 +10,7 @@ cc-token-status — Claude Code usage dashboard in your menu bar.
 https://github.com/jayson-jia-dev/cc-token-status
 """
 
-VERSION = "1.5.12"
+VERSION = "1.5.13"
 REPO_URL = "https://raw.githubusercontent.com/jayson-jia-dev/cc-token-status/main"
 
 import json, os, glob, shlex, socket, subprocess, sys
@@ -241,20 +241,27 @@ LEVELS = [
 LEVEL_CACHE_FILE = Path.home() / ".config" / "cc-token-stats" / ".level_cache.json"
 
 def calc_user_level():
-    """Calculate user level from local data. Returns (score, level_idx, details).
+    """Calculate user level from local data. Returns (score, level_idx,
+    details, breakdown).
+    - details: {dim: final_score}
+    - breakdown: {dim: [{"label_zh", "label_en", "value", "points", "rule_zh",
+       "rule_en"}, ...]} — per-dimension transparency data so the dashboard
+       can show "what was measured, what rule, how many points" on hover.
+       v1.5.13+: consumers that only want score/level can ignore breakdown.
     Cached for 24 hours since level changes very slowly."""
     today_str = datetime.now().strftime("%Y-%m-%d")
     try:
         if LEVEL_CACHE_FILE.is_file():
             _lc = json.loads(LEVEL_CACHE_FILE.read_text())
             if _lc.get("date") == today_str and _lc.get("ver") == VERSION:
-                return _lc["score"], _lc["level"], _lc["details"]
+                return _lc["score"], _lc["level"], _lc["details"], _lc.get("breakdown", {})
     except (OSError, json.JSONDecodeError, KeyError): pass
 
     import glob as _g
     _home = os.path.expanduser("~")
     _cd = CLAUDE_DIR  # respect CFG['claude_dir'], not a hardcoded ~/.claude
     details = {}
+    breakdown = {}  # v1.5.13: per-dimension transparency data for hover tooltips
 
     # Enumerate candidate project directories from Claude Code's own index.
     # Project keys are the absolute path with '/' → '-'. Decoding is lossy
@@ -331,20 +338,34 @@ def calc_user_level():
     else:
         _td = 1
     _dens = _ad / max(_td, 1)
-    s1 = 16 if med >= 80 else 10 if med >= 50 else 6 if med >= 30 else 2 if med >= 10 else 0
-    s1 += 4 if _dens >= 0.6 else 2 if _dens >= 0.4 else 0
-    s1 = min(s1, 20)
+    s1_a = 16 if med >= 80 else 10 if med >= 50 else 6 if med >= 30 else 2 if med >= 10 else 0
+    s1_b = 4 if _dens >= 0.6 else 2 if _dens >= 0.4 else 0
+    s1 = min(s1_a + s1_b, 20)
     details["usage"] = s1
+    breakdown["usage"] = [
+        {"label_zh": "中位会话长度", "label_en": "Median session length",
+         "value": f"{int(med) if med else 0} msg" + (f" ({_n} sessions)" if _n else ""),
+         "points": s1_a, "max": 16,
+         "rule_zh": "≥80→16 | ≥50→10 | ≥30→6 | ≥10→2 | <10→0",
+         "rule_en": "≥80→16 | ≥50→10 | ≥30→6 | ≥10→2 | <10→0"},
+        {"label_zh": "活跃密度", "label_en": "Activity density",
+         "value": f"{_dens:.2f} ({_ad}/{_td} days)",
+         "points": s1_b, "max": 4,
+         "rule_zh": "≥0.6→+4 | ≥0.4→+2",
+         "rule_en": "≥0.6→+4 | ≥0.4→+2"},
+    ]
 
     # 2. Context management (20pts)
-    s2 = 0
     _cm = os.path.join(_cd, "CLAUDE.md")
+    _user_cm_lines = 0
+    s2_a = 0
     if os.path.isfile(_cm):
-        with open(_cm) as _f: s2 += 4 if len(_f.readlines()) > 50 else 2
+        with open(_cm) as _f: _user_cm_lines = len(_f.readlines())
+        s2_a = 4 if _user_cm_lines > 50 else 2
     # Project-level CLAUDE.md — count across all candidate project dirs
     _pcm_count = sum(1 for _p in _candidate_project_dirs
                      if os.path.isfile(os.path.join(_p, "CLAUDE.md")))
-    s2 += 4 if _pcm_count >= 3 else 2 if _pcm_count >= 1 else 0
+    s2_b = 4 if _pcm_count >= 3 else 2 if _pcm_count >= 1 else 0
     # Memory files — scan EVERY project's memory dir, not just the one
     # derived from ~/.claude/projects/-Users-<basename>. Users who open
     # Claude Code from subdirs end up with memory scattered under many
@@ -359,15 +380,36 @@ def calc_user_level():
                     _mf.append(_f)
     _sm = [f for f in _mf if os.path.getsize(f) > 200]
     _mr = any((datetime.now().timestamp() - os.path.getmtime(f)) < 7*86400 for f in _sm) if _sm else False
-    s2 += 4 if len(_sm) >= 5 and _mr else 2 if len(_sm) >= 2 else 0
+    s2_c = 4 if len(_sm) >= 5 and _mr else 2 if len(_sm) >= 2 else 0
     _rd = [os.path.join(_cd, "rules"), os.path.join(_cd, ".claude/rules")]
     _rc = sum(len(_g.glob(os.path.join(d, "*"))) for d in _rd if os.path.isdir(d))
-    if _rc > 0: s2 += 4
-    s2 = min(s2, 20)
+    s2_d = 4 if _rc > 0 else 0
+    s2 = min(s2_a + s2_b + s2_c + s2_d, 20)
     details["context"] = s2
+    breakdown["context"] = [
+        {"label_zh": "用户级 CLAUDE.md", "label_en": "User-level CLAUDE.md",
+         "value": (f"{_user_cm_lines} lines" if _user_cm_lines else "missing"),
+         "points": s2_a, "max": 4,
+         "rule_zh": ">50 行→4 | 存在→2 | 无→0",
+         "rule_en": ">50 lines→4 | exists→2 | none→0"},
+        {"label_zh": "项目级 CLAUDE.md", "label_en": "Project-level CLAUDE.md",
+         "value": f"{_pcm_count} project(s)",
+         "points": s2_b, "max": 4,
+         "rule_zh": "≥3→4 | ≥1→2 | 无→0",
+         "rule_en": "≥3→4 | ≥1→2 | none→0"},
+        {"label_zh": "实质 memory 文件 (>200B)", "label_en": "Memory files (>200B)",
+         "value": f"{len(_sm)} file(s)" + (" (recently used)" if _mr else (" (stale)" if _sm else "")),
+         "points": s2_c, "max": 4,
+         "rule_zh": "≥5 且 7 天内有更新→4 | ≥2→2 | 其他→0",
+         "rule_en": "≥5 & touched <7d→4 | ≥2→2 | else→0"},
+        {"label_zh": "rules 文件", "label_en": "rules files",
+         "value": f"{_rc} file(s)",
+         "points": s2_d, "max": 4,
+         "rule_zh": "≥1→4 | 无→0",
+         "rule_en": "≥1→4 | none→0"},
+    ]
 
     # 3. Tool ecosystem (20pts)
-    s3 = 0
     _wm = {"zentao","gitlab","jira","confluence","jenkins"}
     _pm = 0; _mc = 0
     _mf2 = os.path.join(_cd, "mcp.json")
@@ -379,11 +421,23 @@ def calc_user_level():
             _pm = sum(1 for n in _svs if not any(w in n.lower() for w in _wm))
         except (OSError, json.JSONDecodeError, AttributeError): pass
     _em = _pm + (_mc - _pm) * 0.5
-    s3 += 14 if _em >= 4 else 10 if _em >= 3 else 7 if _em >= 2 else 4 if _em >= 1 else 0
+    s3_a = 14 if _em >= 4 else 10 if _em >= 3 else 7 if _em >= 2 else 4 if _em >= 1 else 0
     _pl = _g.glob(os.path.join(_cd, "plugins/cache/*/"))
-    s3 += 4 if len(_pl) >= 3 else 2 if len(_pl) >= 1 else 0
-    s3 = min(s3, 20)
+    s3_b = 4 if len(_pl) >= 3 else 2 if len(_pl) >= 1 else 0
+    s3 = min(s3_a + s3_b, 20)
     details["tools"] = s3
+    breakdown["tools"] = [
+        {"label_zh": "MCP servers (工作类 ×0.5)", "label_en": "MCP servers (work ×0.5)",
+         "value": f"{_pm} personal + {_mc-_pm} work → effective {_em:g}",
+         "points": s3_a, "max": 14,
+         "rule_zh": "有效数 ≥4→14 | ≥3→10 | ≥2→7 | ≥1→4 | 无→0",
+         "rule_en": "effective ≥4→14 | ≥3→10 | ≥2→7 | ≥1→4 | none→0"},
+        {"label_zh": "插件 (plugins/cache/*)", "label_en": "Plugins (plugins/cache/*)",
+         "value": f"{len(_pl)} plugin(s)",
+         "points": s3_b, "max": 4,
+         "rule_zh": "≥3→4 | ≥1→2 | 无→0",
+         "rule_en": "≥3→4 | ≥1→2 | none→0"},
+    ]
 
     # 4. Automation (20pts) — self-built weighted
     _fp = ("gsd","jjx","rn-","claude-","commit-","code-review","pr-review","understand","smart-",
@@ -403,40 +457,72 @@ def calc_user_level():
             for v in _sd.get("hooks", {}).values():
                 if isinstance(v, list): _hc += len(v)
         except (OSError, json.JSONDecodeError, AttributeError): pass
-    _raw = 0
     _nsc = len(_sc2)
-    _raw += 14 if _nsc >= 10 else 10 if _nsc >= 5 else 6 if _nsc >= 3 else 3 if _nsc >= 1 else 0
-    _raw += 6 if _hc >= 3 else 3 if _hc >= 1 else 0
-    _raw = min(_raw, 20)
+    s4_raw_cmd = 14 if _nsc >= 10 else 10 if _nsc >= 5 else 6 if _nsc >= 3 else 3 if _nsc >= 1 else 0
+    s4_raw_hook = 6 if _hc >= 3 else 3 if _hc >= 1 else 0
+    _raw = min(s4_raw_cmd + s4_raw_hook, 20)
     _ta = len(_ac) + len(_ask)
     _sa = len(_sc2) + len(_ssk)
     _sr = _sa / max(_ta, 1)
-    s4 = int(_raw * (0.3 + 0.7 * _sr))
-    s4 = min(s4, 20)
+    s4 = min(int(_raw * (0.3 + 0.7 * _sr)), 20)
     details["automation"] = s4
+    breakdown["automation"] = [
+        {"label_zh": "自建 commands（排除框架前缀）", "label_en": "Self-built commands (framework prefixes excluded)",
+         "value": f"{_nsc} / {len(_ac)} total",
+         "points": s4_raw_cmd, "max": 14,
+         "rule_zh": "自建数 ≥10→14 | ≥5→10 | ≥3→6 | ≥1→3 | 无→0",
+         "rule_en": "self-built ≥10→14 | ≥5→10 | ≥3→6 | ≥1→3 | none→0"},
+        {"label_zh": "hooks 数量", "label_en": "Hooks count",
+         "value": f"{_hc} hook(s)",
+         "points": s4_raw_hook, "max": 6,
+         "rule_zh": "≥3→6 | ≥1→3 | 无→0",
+         "rule_en": "≥3→6 | ≥1→3 | none→0"},
+        {"label_zh": "最终得分计算", "label_en": "Final score calc",
+         "value": f"raw {_raw} × ({_sa}/{_ta} ratio → ×{(0.3 + 0.7 * _sr):.2f}) = {s4}",
+         "points": 0, "max": 0,
+         "rule_zh": "最终 = raw × (0.3 + 0.7 × ratio)；纯框架系数 0.30，全自建 1.00",
+         "rule_en": "final = raw × (0.3 + 0.7 × ratio); all-framework 0.30, all-self 1.00"},
+    ]
 
     # 5. Scale (20pts) — substantial projects only
-    s5 = 0
     _pdir = os.path.join(_cd, "projects")
     _ps = {}
     for pd in _g.glob(os.path.join(_pdir, "*")):
         if os.path.isdir(pd):
             _ps[os.path.basename(pd)] = len(_g.glob(os.path.join(pd, "*.jsonl")))
     _sp = sum(1 for c in _ps.values() if c >= 5)
-    s5 += 10 if _sp >= 8 else 7 if _sp >= 5 else 4 if _sp >= 3 else 2 if _sp >= 1 else 0
+    s5_a = 10 if _sp >= 8 else 7 if _sp >= 5 else 4 if _sp >= 3 else 2 if _sp >= 1 else 0
     # worktree detection — check every candidate project dir, not just
     # ~/Downloads. Catches users who keep repos under ~/Projects, ~/dev,
     # or wherever.
+    _has_wt = False
     try:
         _has_wt = any(
             os.path.isdir(os.path.join(_p, ".git", "worktrees"))
             for _p in _candidate_project_dirs
         )
-        if _has_wt: s5 += 4
     except OSError: pass
-    s5 += 4 if _td >= 90 else 3 if _td >= 60 else 2 if _td >= 30 else 1 if _td >= 14 else 0
-    s5 = min(s5, 20)
+    s5_b = 4 if _has_wt else 0
+    s5_c = 4 if _td >= 90 else 3 if _td >= 60 else 2 if _td >= 30 else 1 if _td >= 14 else 0
+    s5 = min(s5_a + s5_b + s5_c, 20)
     details["scale"] = s5
+    breakdown["scale"] = [
+        {"label_zh": "实质项目 (≥5 sessions)", "label_en": "Substantial projects (≥5 sessions)",
+         "value": f"{_sp} of {len(_ps)} project(s)",
+         "points": s5_a, "max": 10,
+         "rule_zh": "≥8→10 | ≥5→7 | ≥3→4 | ≥1→2 | 无→0",
+         "rule_en": "≥8→10 | ≥5→7 | ≥3→4 | ≥1→2 | none→0"},
+        {"label_zh": "worktree 使用", "label_en": "Worktree usage",
+         "value": "yes" if _has_wt else "no",
+         "points": s5_b, "max": 4,
+         "rule_zh": "任一项目用了 worktree→4 | 否→0",
+         "rule_en": "any project using worktree→4 | no→0"},
+        {"label_zh": "使用年限", "label_en": "Tenure",
+         "value": f"{_td} days",
+         "points": s5_c, "max": 4,
+         "rule_zh": "≥90→4 | ≥60→3 | ≥30→2 | ≥14→1 | <14→0",
+         "rule_en": "≥90→4 | ≥60→3 | ≥30→2 | ≥14→1 | <14→0"},
+    ]
 
     total = s1 + s2 + s3 + s4 + s5
     lvl = 0
@@ -444,9 +530,9 @@ def calc_user_level():
         if total >= threshold: lvl = i
     try:
         LEVEL_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
-        LEVEL_CACHE_FILE.write_text(json.dumps({"date": today_str, "ver": VERSION, "score": total, "level": lvl, "details": details}))
+        LEVEL_CACHE_FILE.write_text(json.dumps({"date": today_str, "ver": VERSION, "score": total, "level": lvl, "details": details, "breakdown": breakdown}))
     except (OSError, TypeError): pass
-    return total, lvl, details
+    return total, lvl, details, breakdown
 
 def mlabel(h):
     labels = CFG.get("machine_labels",{})
@@ -1507,7 +1593,7 @@ DASHBOARD_FILE = Path.home() / ".config" / "cc-token-stats" / "dashboard.html"
 def _build_level_data():
     """Build level data dict for dashboard payload."""
     try:
-        score, lvl, details = calc_user_level()
+        score, lvl, details, breakdown = calc_user_level()
         icon = LEVELS[lvl][1]
         en_name = LEVELS[lvl][2]
         zh_name = LEVELS[lvl][3]
@@ -1534,7 +1620,7 @@ def _build_level_data():
         return {
             "score": score, "lvl": lvl + 1, "icon": icon,
             "en_name": en_name, "zh_name": zh_name,
-            "details": details, "max_score": 100,
+            "details": details, "breakdown": breakdown, "max_score": 100,
             "cur_threshold": cur_threshold, "next_threshold": next_threshold,
             "gap": gap, "next_icon": next_icon, "next_en": next_en, "next_zh": next_zh,
             "tips": tips,
@@ -1840,6 +1926,16 @@ h3{font-size:12px;color:#8b949e;font-weight:500;margin-bottom:10px;text-transfor
 @media(max-width:900px){.grid{grid-template-columns:repeat(6,1fr)}.s2{grid-column:span 3}.s8,.s6,.s4{grid-column:span 6}}
 @media(max-width:600px){.grid{grid-template-columns:1fr;padding:12px}[class*="s"]{grid-column:span 1}}
 .bg{position:relative;cursor:default}.tip{display:none;position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:8px 10px;font-size:11px;color:#e6edf3;white-space:normal;min-width:140px;max-width:220px;z-index:100;box-shadow:0 4px 12px rgba(0,0,0,0.5);pointer-events:none;text-align:center;line-height:1.4}.tip::after{content:"";position:absolute;top:100%;left:50%;margin-left:-6px;border:6px solid transparent;border-top-color:#30363d}.bg:hover .tip{display:block}
+.dwrap{position:relative}.dwrap:hover{cursor:help}
+.dtip{display:none;position:absolute;bottom:calc(100% + 10px);left:0;right:0;background:#0d1117;border:1px solid #30363d;border-radius:8px;padding:12px 14px;color:#c9d1d9;z-index:100;box-shadow:0 8px 24px rgba(0,0,0,0.6);pointer-events:none;line-height:1.5;text-align:left}
+.dwrap:hover .dtip{display:block}
+.dtip-row{padding:6px 0;border-bottom:1px solid #21262d}.dtip-row:last-child{border-bottom:none}
+.dtip-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:12px}
+.dtip-label{color:#e6edf3;font-weight:500}
+.dtip-pts{color:#8b949e;font-size:10px;font-family:Menlo,monospace;white-space:nowrap}
+.dtip-val{color:#58a6ff;margin-top:3px;font-size:10.5px;font-family:Menlo,monospace}
+.dtip-rule{color:#6e7681;margin-top:2px;font-size:10px}
+.dtip-foot{color:#d4a04a;font-style:italic}
 </style></head><body>
 <div class="header"><h1 id="T"></h1><span class="meta" id="G"></span></div>
 <div class="grid">
@@ -2095,6 +2191,27 @@ var nextName=zh?L.next_zh:L.next_en;
 var dimLabels={usage:zh?'使用深度':'Usage',context:zh?'上下文':'Context',tools:zh?'工具生态':'Tools',automation:zh?'自动化':'Automation',scale:zh?'规模化':'Scale'};
 var dimOrder=['usage','context','tools','automation','scale'];
 var det=L.details||{};
+var bd=L.breakdown||{};
+function esc(s){return String(s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function buildDimTip(items){
+if(!items||!items.length)return'';
+var html='<div class="dtip">';
+items.forEach(function(it){
+var isFoot=!it.max;
+var label=esc(zh?it.label_zh:it.label_en);
+var rule=esc(zh?it.rule_zh:it.rule_en);
+var value=esc(it.value||'');
+html+='<div class="dtip-row'+(isFoot?' dtip-foot':'')+'">';
+html+='<div class="dtip-head"><span class="dtip-label">'+label+'</span>';
+if(!isFoot)html+='<span class="dtip-pts">'+it.points+' / '+it.max+'</span>';
+html+='</div>';
+html+='<div class="dtip-val">'+value+'</div>';
+html+='<div class="dtip-rule">'+rule+'</div>';
+html+='</div>';
+});
+html+='</div>';
+return html;
+}
 
 // Build layout: left radar (40%) + right details (60%)
 var html='<div style="display:flex;gap:20px;flex-wrap:wrap">';
@@ -2125,13 +2242,14 @@ html+='<div style="font-size:13px;color:#8b949e;font-weight:500;text-transform:u
 dimOrder.forEach(function(dim){
 var val=det[dim]||0;var pct=val/20*100;
 var barColor=val>=16?'#58d4ab':val>=10?'#58a6ff':val>=6?'#d29922':'#f85149';
-html+='<div style="margin:10px 0">';
+var tip=buildDimTip(bd[dim]);
+html+='<div class="dwrap" style="margin:10px 0">';
 html+='<div style="display:flex;justify-content:space-between;margin-bottom:3px;font-size:12px">';
-html+='<span style="color:#c9d1d9">'+(dimLabels[dim]||dim)+'</span>';
+html+='<span style="color:#c9d1d9">'+(dimLabels[dim]||dim)+(tip?' <span style="color:#6e7681;font-size:10px;margin-left:4px">ⓘ</span>':'')+'</span>';
 html+='<span style="color:'+barColor+';font-weight:600">'+val+'/20</span></div>';
 html+='<div style="background:#21262d;border-radius:4px;height:8px;overflow:hidden">';
 html+='<div style="background:'+barColor+';height:100%;border-radius:4px;width:'+pct+'%"></div>';
-html+='</div></div>';});
+html+='</div>'+tip+'</div>';});
 
 // Upgrade tips
 if(L.tips&&L.tips.length>0){
@@ -3014,7 +3132,7 @@ def main():
     level_title = t("level")
     print(f"── {level_title} ── | {ST}")
     try:
-        _score, _lvl, _det = calc_user_level()
+        _score, _lvl, _det, _ = calc_user_level()
         _icon = LEVELS[_lvl][1]
         _en_name = LEVELS[_lvl][2]
         _zh_name = LEVELS[_lvl][3]
