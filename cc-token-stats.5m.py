@@ -10,7 +10,7 @@ cc-token-status — Claude Code usage dashboard in your menu bar.
 https://github.com/jayson-jia-dev/cc-token-status
 """
 
-VERSION = "1.5.14"
+VERSION = "1.5.15"
 REPO_URL = "https://raw.githubusercontent.com/jayson-jia-dev/cc-token-status/main"
 
 import json, os, glob, shlex, socket, subprocess, sys
@@ -2071,7 +2071,20 @@ grid:{left:55,right:55,top:30,bottom:38}});
 
 // 2. Model Distribution (auto: donut if balanced, bars if one dominates)
 $('h2').textContent=t('model');
-const mClr={};Object.keys(D.models).forEach(k=>{const l=k.toLowerCase();mClr[k]=l.includes('opus')?C.op:l.includes('haiku')?C.hk:C.sn;});
+// v1.5.15: per-version palette so adjacent variants in the same family don't
+// blur into one another (Opus 4.6 vs 4.7 were identical purple before this).
+// Newest version per family stays brightest; older versions step into darker
+// shades. Unknown variants fall back to the family's base color.
+const MODEL_COLORS={
+'Opus 4.7':'#c4a4f9','Opus 4.6':'#a371f7','Opus 4.5':'#7548c4',
+'Sonnet 4.6':'#7cc1ff','Sonnet 4.5':'#58a6ff',
+'Haiku 4.5':'#56d364','Haiku 3.5':'#3fb950'
+};
+const mClr={};Object.keys(D.models).forEach(k=>{
+if(MODEL_COLORS[k]){mClr[k]=MODEL_COLORS[k];return;}
+const l=k.toLowerCase();
+mClr[k]=l.includes('opus')?C.op:l.includes('haiku')?C.hk:C.sn;
+});
 const mTotal=Object.values(D.models).reduce((a,b)=>a+b,0)||1;
 const mMax=Math.max(...Object.values(D.models));
 if(mMax/mTotal>0.9){
