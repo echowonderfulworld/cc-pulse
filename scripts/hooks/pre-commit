@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# pre-commit: 强制 cc-token-stats.5m.py 和 install.sh 的 VERSION 一致
+# 治根：避免 v1.5.10~v1.5.15 那种 install.sh 漏改的事故。
+# 激活：在 repo 根目录跑一次 `bash scripts/setup-hooks.sh`
+set -e
+
+ROOT="$(git rev-parse --show-toplevel)"
+PY="$ROOT/cc-token-stats.5m.py"
+SH="$ROOT/install.sh"
+
+[ -f "$PY" ] || { echo "✗ pre-commit: 找不到 $PY" >&2; exit 1; }
+[ -f "$SH" ] || { echo "✗ pre-commit: 找不到 $SH" >&2; exit 1; }
+
+PY_VER=$(grep -m1 '^VERSION = ' "$PY" | sed 's/^VERSION = "\(.*\)".*/\1/')
+SH_VER=$(grep -m1 '^VERSION=' "$SH" | sed 's/^VERSION="\(.*\)".*/\1/')
+
+if [ "$PY_VER" != "$SH_VER" ]; then
+  cat >&2 <<EOF
+✗ pre-commit blocked: VERSION 失同步
+    cc-token-stats.5m.py : $PY_VER
+    install.sh           : $SH_VER
+
+  修复后再 commit，例如：
+    sed -i '' "s/^VERSION=\".*\"\$/VERSION=\"$PY_VER\"/" install.sh
+  或反过来同步 .py。
+
+  绕过（不推荐）：git commit --no-verify
+EOF
+  exit 1
+fi
+
+echo "✓ pre-commit: VERSION 一致 ($PY_VER)"
