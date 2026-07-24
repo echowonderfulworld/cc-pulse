@@ -10,7 +10,7 @@ cc-token — Claude Code usage dashboard in your menu bar.
 https://github.com/jayson-jia-dev/cc-token
 """
 
-VERSION = "1.6.7"
+VERSION = "1.7.0"
 REPO_URL = "https://raw.githubusercontent.com/jayson-jia-dev/cc-token/main"
 
 import json, os, glob, shlex, socket, subprocess, sys
@@ -71,6 +71,11 @@ DEFAULTS = {
     # many Macs and silently eats the click). Set to an app name
     # ("Safari" / "Google Chrome" / "Firefox") to force one browser.
     "browser": "auto",
+    # Optional: show the remaining credit of an OpenAI-compatible relay
+    # (e.g. a Codex sub2api / new-api / one-api gateway) in the dropdown.
+    # {"url": "https://relay.example.com/v1", "api_key": "sk-...", "label": "Codex"}
+    # Empty = disabled. Only the remaining balance is shown — no token stats.
+    "balance_endpoint": {},
 }
 NOTIFY_STATE_FILE = Path.home() / ".config" / "cc-token" / ".notify_state.json"
 SCAN_CACHE_FILE = Path.home() / ".config" / "cc-token" / ".scan_cache.json"
@@ -1202,6 +1207,61 @@ def fetch_usage():
         return None, "api_error"
     except (urllib.error.URLError, OSError, socket.timeout, json.JSONDecodeError):
         return None, "api_error"
+
+def fetch_balance():
+    """Fetch the remaining credit of an OpenAI-compatible relay's /usage
+    endpoint (Codex sub2api / new-api / one-api style). Config-driven via
+    config.json "balance_endpoint": {url, api_key, label}.
+
+    Returns (info, error_hint). info is a dict {remaining, limit, unit, label}
+    on success, or None. When the feature is not configured returns
+    (None, None) so callers stay silent; on a real failure returns
+    (None, "<hint>"). Deliberately parses ONLY the balance — token accounting
+    is out of scope per the user's "just the remaining credit" request."""
+    be = CFG.get("balance_endpoint") or {}
+    url = (be.get("url") or "").rstrip("/")
+    key = be.get("api_key") or ""
+    label = be.get("label") or "Balance"
+    if not url or not key:
+        return None, None  # not configured → silently skip
+    endpoint = f"{url}/usage"
+    auth = f"Authorization: Bearer {key}"
+    # curl, NOT urllib: these relays often sit behind Cloudflare, which RSTs
+    # urllib's TLS fingerprint (direct → HTTP 403 "error code: 1010";
+    # via-proxy → SSL UNEXPECTED_EOF). curl's fingerprint is allowed through.
+    # Attempt 0: curl default (honors env proxy, and works direct too);
+    # Attempt 1: force the macOS system proxy (SwiftBar's sandbox strips env).
+    for attempt in range(2):
+        proxy = None if attempt == 0 else _detect_macos_proxy()
+        if attempt == 1 and not proxy:
+            break
+        cmd = ["curl", "-sS", "-m", "8", "-w", "\n%{http_code}", "-H", auth]
+        if proxy:
+            cmd += ["-x", proxy]
+        cmd.append(endpoint)
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=12)
+        except (subprocess.SubprocessError, OSError):
+            continue
+        out = r.stdout
+        code = out.rsplit("\n", 1)[-1].strip() if "\n" in out else ""
+        body = out.rsplit("\n", 1)[0] if "\n" in out else out
+        if code in ("401", "403"):
+            return None, "auth_error"
+        if r.returncode == 0 and code.startswith("2"):
+            try:
+                data = json.loads(body)
+            except (json.JSONDecodeError, ValueError):
+                return None, "api_error"
+            quota = data.get("quota") or {}
+            remaining = data.get("remaining", quota.get("remaining"))
+            limit = quota.get("limit", data.get("limit"))
+            unit = data.get("unit") or quota.get("unit") or "USD"
+            if remaining is None:
+                return None, "no_balance_field"
+            return {"remaining": remaining, "limit": limit, "unit": unit, "label": label}, None
+        # non-2xx / network hiccup → fall through to the proxy attempt
+    return None, "api_error"
 
 USAGE_CACHE = Path.home() / ".config" / "cc-token" / ".usage_cache.json"
 BACKOFF_STATE_FILE = Path.home() / ".config" / "cc-token" / ".backoff_state.json"
@@ -3056,6 +3116,30 @@ def main():
     def rj(label, val):
         pad = W - len(label) - dw(val)
         return f"{label}{' ' * max(pad, 1)}{val}"
+
+    # ═══ 0. RELAY BALANCE (optional) ═══
+    # Remaining credit of a configured OpenAI-compatible relay (e.g. Codex
+    # sub2api). Rendered right under the title so it's the first thing seen.
+    # Silent when unconfigured; shows a muted hint when configured but failing.
+    _bal, _bal_err = fetch_balance()
+    if _bal is not None:
+        _u = _bal["unit"]; _rem = _bal["remaining"]; _lim = _bal["limit"]
+        _left = "剩余" if LANG == "zh" else "left"
+        if _u == "USD":
+            _line = f"💳 {_bal['label']}: ${_rem:.2f} {_left}"
+            if _lim: _line += f" / ${_lim:g}"
+        else:
+            _line = f"💳 {_bal['label']}: {_rem:.2f} {_u} {_left}"
+            if _lim: _line += f" / {_lim:g} {_u}"
+        print(_line)
+        print("---")
+    elif _bal_err:
+        _lbl = (CFG.get("balance_endpoint") or {}).get("label") or "Balance"
+        _hint = {"auth_error": ("key 失效" if LANG == "zh" else "key invalid"),
+                 "api_error": ("查询失败" if LANG == "zh" else "fetch failed"),
+                 "no_balance_field": ("无余额字段" if LANG == "zh" else "no balance field")}.get(_bal_err, _bal_err)
+        print(f"💳 {_lbl}: {_hint} | color=gray size=12")
+        print("---")
 
     # ═══ 1. LIMITS (most urgent) ═══
     # usage already fetched above for menu bar line

@@ -9,5 +9,10 @@
     "my-macbook": "MacBook",
     "office-imac": "Office"
   },
-  "menu_bar_icon": "sfSymbol=sparkles.rectangle.stack"
+  "menu_bar_icon": "sfSymbol=sparkles.rectangle.stack",
+  "balance_endpoint": {
+    "url": "https://relay.example.com/v1",
+    "api_key": "sk-your-relay-key",
+    "label": "Codex"
+  }
 }
