@@ -10,7 +10,7 @@ cc-token — Claude Code usage dashboard in your menu bar.
 https://github.com/jayson-jia-dev/cc-token
 """
 
-VERSION = "1.7.0"
+VERSION = "1.7.1"
 REPO_URL = "https://raw.githubusercontent.com/jayson-jia-dev/cc-token/main"
 
 import json, os, glob, shlex, socket, subprocess, sys
@@ -3131,7 +3131,7 @@ def main():
         else:
             _line = f"💳 {_bal['label']}: {_rem:.2f} {_u} {_left}"
             if _lim: _line += f" / {_lim:g} {_u}"
-        print(_line)
+        print(f"{_line} | color=white")
         print("---")
     elif _bal_err:
         _lbl = (CFG.get("balance_endpoint") or {}).get("label") or "Balance"
