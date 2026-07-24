@@ -10,7 +10,7 @@ cc-token — Claude Code usage dashboard in your menu bar.
 https://github.com/jayson-jia-dev/cc-token
 """
 
-VERSION = "1.7.1"
+VERSION = "1.7.2"
 REPO_URL = "https://raw.githubusercontent.com/jayson-jia-dev/cc-token/main"
 
 import json, os, glob, shlex, socket, subprocess, sys
@@ -1122,6 +1122,17 @@ def _detect_macos_proxy():
     except (subprocess.SubprocessError, OSError):
         pass
     return None
+
+def _menubar_is_dark():
+    """True when the macOS menu bar is in dark appearance. Used to pick a
+    high-contrast color for dropdown rows (white on dark / black on light) —
+    a fixed color washes out in the opposite appearance."""
+    try:
+        out = subprocess.run(["defaults", "read", "-g", "AppleInterfaceStyle"],
+                             capture_output=True, text=True, timeout=2)
+        return "Dark" in out.stdout
+    except (subprocess.SubprocessError, OSError):
+        return True  # default to dark (the common menu-bar case)
 
 def get_oauth_token():
     """Read Claude Code OAuth token from macOS Keychain.
@@ -3131,7 +3142,8 @@ def main():
         else:
             _line = f"💳 {_bal['label']}: {_rem:.2f} {_u} {_left}"
             if _lim: _line += f" / {_lim:g} {_u}"
-        print(f"{_line} | color=white")
+        _bal_color = "#FFFFFF" if _menubar_is_dark() else "#000000"
+        print(f"{_line} | color={_bal_color} size=14")
         print("---")
     elif _bal_err:
         _lbl = (CFG.get("balance_endpoint") or {}).get("label") or "Balance"
